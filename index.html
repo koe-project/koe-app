@@ -206,7 +206,6 @@
       return (
         <div className="app-container font-serif">
           {view === 'top' && <TopView onNext={() => setView('intro')} />}
-          {/* テストモード(weekIdx = -1)として開始 */}
           {view === 'intro' && <IntroView onNext={() => { setWeekIdx(-1); setQIndex(0); setView('week_start'); }} />}
           {view === 'week_start' && <WeekStartView weekIdx={weekIdx} qIndex={qIndex} onJump={handleJump} onAnother={handleNextQuestion} onNext={() => setView('recording')} onFinishSpeak={() => setView('epilogue')} />}
           {view === 'recording' && <RecordingView question={weekIdx === -1 ? CONTENT.test.questions[qIndex] : CONTENT.weeks[weekIdx].questions[qIndex]} onComplete={(recordingData) => { setCurrentData(recordingData); setView('review'); }} />}
@@ -296,7 +295,7 @@
     }
 
     // ==========================================
-    // ▼▼▼ 録音（本番＆テスト兼用）画面 ▼▼▼
+    // ▼▼▼ 録音画面（カウントダウン・音付き） ▼▼▼
     // ==========================================
     function RecordingView({ question, onComplete }) {
       const [status, setStatus] = useState('counting');
@@ -308,7 +307,48 @@
 
       const getSupportedMimeType = () => { const types = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav']; for (const type of types) { if (MediaRecorder.isTypeSupported(type)) return type; } return ''; };
 
-      useEffect(() => { if (status === 'counting') { if (countdown > 0) setTimeout(() => setCountdown(countdown - 1), 1000); else startRec(); } }, [status, countdown]);
+      // ▼ 穏やかな電子音を鳴らす関数
+      const playBeep = (isStart = false) => {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
+          const ctx = new AudioContext();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          
+          osc.type = 'sine';
+          if (isStart) {
+            osc.frequency.setValueAtTime(880, ctx.currentTime); // 録音開始時（ポーン）
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.8);
+          } else {
+            osc.frequency.setValueAtTime(660, ctx.currentTime); // 3,2,1のカウント時（ポッ）
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.5);
+          }
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+        } catch(e) { console.error("Audio beep error:", e); }
+      };
+
+      useEffect(() => { 
+        if (status === 'counting') { 
+          if (countdown > 0) {
+            playBeep(false);
+            setTimeout(() => setCountdown(countdown - 1), 1000); 
+          } else { 
+            playBeep(true);
+            startRec(); 
+          } 
+        } 
+      }, [status, countdown]);
+
       useEffect(() => { let timer; if (status === 'recording' && elapsed < 180) timer = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(timer); }, [status, elapsed]);
 
       const startRec = async () => {
@@ -351,24 +391,37 @@
       const circumference = 2 * Math.PI * 95;
       return (
         <div className="h-full w-full flex flex-col items-center justify-center p-10 fade-in bg-slate-800 font-serif">
-          {status === 'counting' ? <div className="countdown-text font-serif text-white text-9xl">{countdown}</div> : 
-           status === 'error' ? (
+          {status === 'error' ? (
              <div className="text-center space-y-6"><CustomIcon name="alert-circle" size={48} className="text-red-400 mx-auto" /><p className="text-red-200">{errorMsg}</p><button onClick={() => window.location.reload()} className="btn-glass px-6 py-2 rounded-full">リロードしてやり直す</button></div>
            ) : (
             <div className="flex flex-col items-center space-y-16 w-full">
+              
+              {/* ▼ 質問文とヒント（カウントダウン中も常に表示） ▼ */}
               <div className="text-center space-y-4">
-                <h3 className="text-white/30 text-[0.8rem] tracking-[0.4em] uppercase font-serif">Recording</h3>
+                <h3 className="text-white/30 text-[0.8rem] tracking-[0.4em] uppercase font-serif">
+                  {status === 'counting' ? 'Get Ready' : 'Recording'}
+                </h3>
                 <p className="text-white/90 font-serif text-[1.2rem] leading-relaxed px-4 text-shadow-premium">{question.text}</p>
                 {question.hint && <p className="text-white/50 font-serif text-[0.8rem] mt-2">{question.hint}</p>}
               </div>
+
+              {/* ▼ アニメーション領域（カウントダウンとマイクアイコンが切り替わる） ▼ */}
               <div className="relative w-64 h-64 flex items-center justify-center">
                 <svg width="240" height="240" className="-rotate-90">
                   <circle cx="120" cy="120" r={95} stroke="rgba(255,255,255,0.02)" strokeWidth="1.5" fill="transparent" />
-                  <circle cx="120" cy="120" r={95} stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" fill="transparent" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - (elapsed/180))} strokeLinecap="round" className="transition-all duration-1000 linear" />
+                  {(status === 'recording' || status === 'paused') && <circle cx="120" cy="120" r={95} stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" fill="transparent" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - (elapsed/180))} strokeLinecap="round" className="transition-all duration-1000 linear" />}
                 </svg>
-                <div className="absolute opacity-5"><CustomIcon name="mic" size={32} /></div>
+                <div className="absolute flex items-center justify-center">
+                  {status === 'counting' ? (
+                     <span key={countdown} className="font-serif text-white text-8xl fade-in opacity-80">{countdown}</span>
+                  ) : (
+                     <div className="opacity-5"><CustomIcon name="mic" size={32} /></div>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-12 items-center">
+
+              {/* ▼ ボトムボタン（カウントダウン中は透明化して押せなくする） ▼ */}
+              <div className={`flex gap-12 items-center transition-opacity duration-500 ${status === 'counting' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                 <button onClick={stopRec} className="w-20 h-20 rounded-full bg-white text-stone-800 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-all"><CustomIcon name="square" size={24} /><span className="text-[0.75rem] font-bold mt-1 font-serif">終了</span></button>
                 <button onClick={() => { if(status === 'recording') { setStatus('paused'); mediaRecorderRef.current.pause(); } else { setStatus('recording'); mediaRecorderRef.current.resume(); } }} className="w-20 h-20 rounded-full bg-white/10 border border-white/20 text-white flex flex-col items-center justify-center active:scale-95 transition-all">
                   <CustomIcon name={status === 'recording' ? "pause" : "play"} size={24} /><span className="text-[0.75rem] font-bold mt-1 font-serif">{status === 'recording' ? "一時停止" : "再開"}</span>
