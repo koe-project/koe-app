@@ -295,12 +295,20 @@
       );
     }
 
-    function SoundCheckView({ onNext }) {
+function SoundCheckView({ onNext }) {
       const [status, setStatus] = useState('idle'); 
       const [testAudioUrl, setTestAudioUrl] = useState(null);
       const [isPlaying, setIsPlaying] = useState(false);
       const [volume, setVolume] = useState(0);
       const [error, setError] = useState(null);
+
+      // --- 追加：文字起こし用のステートと参照 ---
+      const [transcriptText, setTranscriptText] = useState("");
+      const transcriptRef = useRef("");
+      const interimRef = useRef("");
+      const recognitionRef = useRef(null);
+      // ------------------------------------
+
       const recorderRef = useRef(null);
       const chunksRef = useRef([]);
       const audioObjRef = useRef(null);
@@ -316,7 +324,12 @@
       const startTest = async () => {
         try {
           setError(null);
-          
+          // --- 追加：開始時に文字起こしをリセット ---
+          setTranscriptText("");
+          transcriptRef.current = "";
+          interimRef.current = "";
+          // --------------------------------------
+
           if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             throw new Error("NOT_SUPPORTED");
           }
@@ -356,7 +369,31 @@
             audioCtx.close();
           };
 
-          recorder.start(100); setStatus('recording');
+          recorder.start(100); 
+          setStatus('recording');
+
+          // --- 追加：音声認識（文字起こし）の開始 ---
+          const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (SpeechRec) {
+            const rec = new SpeechRec(); 
+            rec.lang = 'ja-JP'; 
+            rec.continuous = true; 
+            rec.interimResults = true;
+            rec.onresult = e => {
+              let final = ""; let interim = "";
+              for (let i = e.resultIndex; i < e.results.length; ++i) { 
+                if (e.results[i].isFinal) final += e.results[i][0].transcript; 
+                else interim += e.results[i][0].transcript; 
+              }
+              if (final) transcriptRef.current += final; 
+              interimRef.current = interim;
+              setTranscriptText((transcriptRef.current + " " + interimRef.current).trim());
+            };
+            rec.start(); 
+            recognitionRef.current = rec;
+          }
+          // --------------------------------------
+
         } catch (e) {
           console.error("Mic access error:", e);
           if (e.message === "NOT_SUPPORTED") {
@@ -371,7 +408,17 @@
         }
       };
 
-      const stopTest = () => { if (recorderRef.current && recorderRef.current.state === 'recording') recorderRef.current.stop(); setStatus('stopped'); };
+      const stopTest = () => { 
+        if (recorderRef.current && recorderRef.current.state === 'recording') recorderRef.current.stop(); 
+        
+        // --- 追加：音声認識の停止 ---
+        if (recognitionRef.current) {
+          try { recognitionRef.current.stop(); } catch(e){}
+        }
+        // ------------------------
+        
+        setStatus('stopped'); 
+      };
 
       const playTest = () => {
         if (!testAudioUrl) return;
@@ -431,12 +478,33 @@
             {status === 'recording' && <button onClick={stopTest} className="w-full py-5 rounded-full bg-white/20 border-2 border-white/60 font-bold font-serif">録音を終了する</button>}
             {status === 'stopped' && (
               <div className="space-y-4 fade-in font-serif">
+                
+                {/* --- 追加：文字起こし結果の表示パネル --- */}
+                {transcriptText && (
+                  <div className="bg-black/20 rounded-xl p-4 border border-white/10 text-white/90 text-sm leading-relaxed text-left">
+                    <p className="text-white/50 text-[0.7rem] mb-1">【認識された音声】</p>
+                    <p>{transcriptText}</p>
+                  </div>
+                )}
+                {/* ------------------------------------- */}
+
                 <button onClick={playTest} className="btn-glass w-full py-5 rounded-full flex items-center justify-center gap-3">
                   <CustomIcon name={isPlaying ? "pause" : "play"} size={20} />
                   {isPlaying ? "停止" : "声を再生して確認"}
                 </button>
                 <button onClick={onNext} className="w-full py-5 rounded-full bg-white text-slate-900 font-bold tracking-widest shadow-xl text-lg font-serif">準備完了。問いへ進む</button>
-                <button onClick={() => { setStatus('idle'); setTestAudioUrl(null); setVolume(0); setIsPlaying(false); setError(null); }} className="text-white/40 text-sm underline pt-2 block w-full font-serif">もう一度録りなおす</button>
+                <button onClick={() => { 
+                  setStatus('idle'); 
+                  setTestAudioUrl(null); 
+                  setVolume(0); 
+                  setIsPlaying(false); 
+                  setError(null); 
+                  // --- 追加：リセット処理 ---
+                  setTranscriptText("");
+                  transcriptRef.current = "";
+                  interimRef.current = "";
+                  // ------------------------
+                }} className="text-white/40 text-sm underline pt-2 block w-full font-serif">もう一度録りなおす</button>
               </div>
             )}
           </div>
