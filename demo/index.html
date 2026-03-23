@@ -130,7 +130,7 @@
       const handleSave = (ansData, audioBase64, callback) => {
         setSavedSteps(ansData);
         // 発行したIDを questionId としてGASに送る（スプレッドシート連携用）
-        const payload = { data: { ...ansData, audioBase64: audioBase64, questionId: episodeId || 'Demo-1', weekNumber: 0 } };
+        const payload = { data: { ...ansData, audioBase64: audioBase64, questionId: episodeId || 'Demo-1', weekNumber: 0, isDemo: true } };
 
         callGasApi('saveAnswer', payload).then(res => {
           setView('demo_complete'); 
