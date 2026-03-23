@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Koe - 体験版デモ</title>
+  
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error("Global Error:", error || message);
+    };
+  </script>
+  
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <style>
+    body { 
+      font-family: 'Noto Sans JP', sans-serif; 
+      margin: 0; padding: 0; 
+      background: linear-gradient(180deg, #1e293b 0%, #334155 35%, #475569 65%, #d97706 100%);
+      height: 100vh; color: white; -webkit-font-smoothing: antialiased; overflow: hidden;
+    }
+    .font-serif { font-family: 'Noto Serif JP', serif; }
+    .font-mono { font-family: monospace; }
+    .app-container { display: flex; flex-direction: column; height: 100vh; height: 100dvh; max-width: 600px; margin: 0 auto; position: relative; }
+    .text-shadow-premium { text-shadow: 0 2px 15px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6); }
+    .btn-glass {
+      background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.3); color: white; transition: all 0.4s ease; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .btn-glass:active:not(:disabled) { transform: scale(0.96); background: rgba(255, 255, 255, 0.3); }
+    .btn-glass:disabled { opacity: 0.6; cursor: not-allowed; }
+    .fade-in { animation: fadeInEffect 1.2s ease-out forwards; }
+    @keyframes fadeInEffect { from { opacity: 0; } to { opacity: 1; } }
+    .loader-spin { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    
+    .step-tab { flex: 1; padding: 12px 0; font-size: 0.9rem; text-align: center; border-bottom: 2px solid transparent; color: rgba(255,255,255,0.3); transition: all 0.3s ease; font-weight: 500; }
+    .step-tab.active { color: white; border-bottom-color: white; font-weight: bold; }
+    
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef } = React;
+
+    // ==========================================
+    // ★ 各種連携URL設定エリア ★
+    // ==========================================
+    const GAS_API_URL = "ここにGASのURLを貼り付けてください";
+    
+    // 【重要】GoogleフォームのURLとパラメータ設定
+    // 1. 「残す（コア層向け）」フォーム
+    const FORM_SAVE_BASE_URL = "https://docs.google.com/forms/d/e/YOUR_FORM_A_ID/viewform";
+    const FORM_SAVE_ENTRY_ID = "entry.123456789"; // フォームAの「キー保管用」の非表示設問ID
+
+    // 2. 「感想のみ（ライト層向け）」フォーム
+    const FORM_FEEDBACK_URL = "https://docs.google.com/forms/d/e/YOUR_FORM_B_ID/viewform";
+
+    const callGasApi = async (action, payload) => {
+      if (!GAS_API_URL || GAS_API_URL.includes("ここに")) {
+        console.warn("デモモードで動作します。");
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            if (action === 'generateSteps') {
+              resolve({
+                success: true,
+                data: {
+                  step1: "【デモモード】\n" + (payload.transcript || "音声が入力されませんでした。"),
+                  step2: "【デモモード】\n本番環境で連携すると、ここにプロの編集者が整えたような美しい文章が表示されます。あなたの声が、ひとつの物語として残ります。",
+                  tags: ["体験", "未来"], era: "現在", emotion: "期待"
+                }
+              });
+            } else if (action === 'saveAnswer') { resolve({ success: true }); } 
+            else { resolve({ success: false }); }
+          }, 1500);
+        });
+      }
+      const response = await fetch(GAS_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: action, ...payload }) });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return await response.json();
+    };
+
+    // 体験版用の質問コンテンツ
+    const DEMO_QUESTION = {
+      theme: "koe 特別体験版",
+      text: "最近、少しだけ嬉しかったことや、\n心が動いた出来事はありましたか？", 
+      hint: "💡今日食べた美味しいものや、ふと感じたことなど、自由に話してみて"
+    };
+
+    const CustomIcon = ({ name, size = 24, className = "" }) => {
+      const paths = {
+        'play': <polygon points="5 3 19 12 5 21 5 3"/>,
+        'pause': <><rect width="4" height="16" x="6" y="4"/><rect width="4" height="16" x="14" y="4"/></>,
+        'square': <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>,
+        'chevron-down': <path d="m6 9 6 6 6-6"/>,
+        'loader-2': <path d="M21 12a9 9 0 1 1-6.219-8.56"/>,
+        'check': <path d="M20 6 9 17l-5-5"/>,
+        'alert-circle': <><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></>,
+        'tag': <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />,
+        'pencil': <><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></>,
+        'book': <><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></>
+      };
+      return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{paths[name] || null}</svg>;
+    };
+
+    // ==========================================
+    // ▼▼▼ メインAppコンポーネント ▼▼▼
+    // ==========================================
+    function App() {
+      const [view, setView] = useState('top'); 
+      const [currentData, setCurrentData] = useState(null); 
+      const [savedSteps, setSavedSteps] = useState(null);
+      const [episodeId, setEpisodeId] = useState("");
+
+      const handleStart = () => {
+        // 裏側で専用IDを発行（ユーザーには見せない）
+        setEpisodeId('KOE-' + Math.random().toString(36).substr(2, 6).toUpperCase());
+        setView('question_recording');
+      };
+
+      const handleSave = (ansData, audioBase64, callback) => {
+        setSavedSteps(ansData);
+        // 発行したIDを questionId としてGASに送る（スプレッドシート連携用）
+        const payload = { data: { ...ansData, audioBase64: audioBase64, questionId: episodeId || 'Demo-1', weekNumber: 0 } };
+
+        callGasApi('saveAnswer', payload).then(res => {
+          setView('demo_complete'); 
+          if (callback) callback();
+        }).catch(err => {
+          alert("通信エラーが発生しました。"); if(callback) callback();
+        });
+      };
+
+      return (
+        <div className="app-container font-serif">
+          {view === 'top' && <TopView onNext={() => setView('intro')} />}
+          {view === 'intro' && <IntroView onStart={handleStart} />}
+          {view === 'question_recording' && <QuestionRecordingView question={DEMO_QUESTION} onComplete={(recordingData) => { setCurrentData(recordingData); setView('review'); }} />}
+          {view === 'review' && <ReviewView data={currentData} onBack={() => setView('question_recording')} onSave={handleSave} />}
+          {view === 'demo_complete' && <DemoCompletionView savedSteps={savedSteps} episodeId={episodeId} />}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ▼▼▼ トップ画面 ▼▼▼
+    // ==========================================
+    function TopView({ onNext }) {
+      return (
+        <div className="h-full w-full flex flex-col justify-between items-center py-20 px-10 fade-in">
+          <div className="flex flex-col items-center pt-10 w-full max-w-[300px]">
+            <p className="text-white/60 tracking-widest text-sm mb-4 font-serif border border-white/20 px-4 py-1 rounded-full">特別体験版</p>
+            <h1 className="text-8xl tracking-[0.1em] text-white text-shadow-premium lowercase font-serif">koe</h1>
+            <p className="text-white font-serif tracking-[0.15em] text-[1.1rem] text-shadow-premium leading-relaxed text-center mt-6">語るだけで、<br />人生が本になる。</p>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-white/40 to-transparent mt-6"></div>
+          </div>
+          <button onClick={onNext} className="animate-bounce flex flex-col items-center gap-2 text-white/50 hover:text-white transition-all"><CustomIcon name="chevron-down" size={40} /></button>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ▼▼▼ イントロ画面 ▼▼▼
+    // ==========================================
+    function IntroView({ onStart }) {
+      return (
+        <div className="h-full w-full flex flex-col justify-between items-center py-16 px-10 fade-in text-center">
+          <div className="space-y-10 flex-1 flex flex-col justify-center text-shadow-premium">
+            <p className="text-[1.1rem]">koeは、あなたの生きた証を<br/>美しい言葉で残すサービスです。</p>
+            <p className="text-[1.1rem]">うまく話さなくて大丈夫。<br />まとまっていなくても大丈夫。</p>
+            <p className="text-[1.1rem]">まずは、ほんの少しだけ。<br/>あなたの声を聴かせてください。</p>
+          </div>
+          <div className="w-full max-w-xs pb-10">
+            <button onClick={onStart} className="btn-glass w-full py-6 rounded-full text-[1.2rem] tracking-[0.3em] text-shadow-premium font-serif fade-in">体験をはじめる</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ▼▼▼ ワンルーム録音画面（時間表示控えめ版） ▼▼▼
+    // ==========================================
+    function QuestionRecordingView({ question, onComplete }) {
+      const [status, setStatus] = useState('idle');
+      const [countdown, setCountdown] = useState(3);
+      const [elapsed, setElapsed] = useState(0);
+      const [errorMsg, setErrorMsg] = useState(null);
+
+      const transcriptRef = useRef(""); const interimRef = useRef("");
+      const mediaRecorderRef = useRef(null); const chunksRef = useRef([]); const recognitionRef = useRef(null);
+
+      const MAX_RECORDING_SECONDS = 900;
+
+      const getSupportedMimeType = () => { const types = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav']; for (const type of types) { if (MediaRecorder.isTypeSupported(type)) return type; } return ''; };
+
+      const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+      };
+
+      const playBeep = (isStart = false) => {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
+          const ctx = new AudioContext();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          
+          osc.type = 'sine';
+          if (isStart) {
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.015, ctx.currentTime + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+            osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.8);
+          } else {
+            osc.frequency.setValueAtTime(440, ctx.currentTime);
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.015, ctx.currentTime + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+            osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+          }
+          osc.connect(gain); gain.connect(ctx.destination);
+        } catch(e) {}
+      };
+
+      useEffect(() => { 
+        if (status === 'counting') { 
+          if (countdown > 0) { playBeep(false); setTimeout(() => setCountdown(countdown - 1), 1000); } 
+          else { playBeep(true); startRec(); } 
+        } 
+      }, [status, countdown]);
+
+      useEffect(() => { 
+        let timer; 
+        if (status === 'recording' && elapsed < MAX_RECORDING_SECONDS) { timer = setInterval(() => setElapsed(e => e + 1), 1000); } 
+        else if (elapsed >= MAX_RECORDING_SECONDS && status === 'recording') { stopRec(); }
+        return () => clearInterval(timer); 
+      }, [status, elapsed]);
+
+      const startRec = async () => {
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("NOT_SUPPORTED");
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mimeType = getSupportedMimeType();
+          const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+          chunksRef.current = [];
+          recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+          recorder.onstop = () => {
+            const finalTranscript = (transcriptRef.current + " " + interimRef.current).trim();
+            const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+            const reader = new FileReader(); reader.readAsDataURL(blob);
+            reader.onloadend = () => { onComplete({ transcriptText: finalTranscript, audioBase64: reader.result.split(',')[1], fullAudioDataUrl: reader.result }); stream.getTracks().forEach(t => t.stop()); };
+          };
+          recorder.start(200); mediaRecorderRef.current = recorder; setStatus('recording');
+          const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (SpeechRec) {
+            const rec = new SpeechRec(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true;
+            rec.onresult = e => {
+              let final = ""; let interim = "";
+              for (let i = e.resultIndex; i < e.results.length; ++i) { if (e.results[i].isFinal) final += e.results[i][0].transcript; else interim += e.results[i][0].transcript; }
+              if (final) transcriptRef.current += final; interimRef.current = interim;
+            };
+            rec.start(); recognitionRef.current = rec;
+          }
+        } catch (e) { 
+          setStatus('error');
+          if (e.message === "NOT_SUPPORTED") setErrorMsg("マイク機能がサポートされていません。"); else setErrorMsg("マイクの起動に失敗しました。アクセス許可をご確認ください。");
+        }
+      };
+
+      const stopRec = () => { if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){} setTimeout(() => { if (mediaRecorderRef.current) mediaRecorderRef.current.stop(); }, 1200); };
+
+      return (
+        <div className="h-full w-full flex flex-col px-8 py-12 fade-in relative">
+          {/* カウントダウンオーバーレイ */}
+          {status === 'counting' && (
+            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center fade-in">
+              <span key={countdown} className="font-serif text-white text-[10rem] opacity-90 drop-shadow-[0_0_40px_rgba(255,255,255,0.4)] animate-pulse">{countdown}</span>
+            </div>
+          )}
+
+          {/* 上部：時間表示（録音中のみ） */}
+          <header className="mb-6 text-center font-serif flex flex-col items-center justify-center relative z-10 min-h-[60px]">
+            {status === 'idle' ? (
+              <h2 className="text-[1.2rem] text-white/50 mt-2 font-normal">{question.theme}</h2>
+            ) : (status === 'recording' || status === 'paused') ? (
+               <div className="flex items-center gap-3 bg-white/5 px-5 py-2 rounded-full border border-white/10 fade-in">
+                 <div className={`w-2 h-2 rounded-full ${status === 'recording' ? 'bg-red-500 animate-pulse' : 'bg-white/30'}`}></div>
+                 <span className="text-white/40 text-[0.9rem] tracking-widest font-mono">{formatTime(elapsed)} / 15:00</span>
+               </div>
+            ) : null}
+          </header>
+
+          <div className="flex-1 flex flex-col items-center justify-between space-y-6">
+            {/* 中央：質問カード */}
+            <div className="card-stack w-full relative min-h-[220px] flex-shrink-0">
+              <div className="absolute inset-0 bg-white/5 translate-y-6 scale-95 opacity-10 rounded-[2.5rem]"></div>
+              <div className="absolute inset-0 bg-white/10 translate-y-3 scale-[0.98] opacity-20 rounded-[2.5rem]"></div>
+              <div className="absolute inset-0 bg-white/15 backdrop-blur-lg p-8 flex flex-col items-center justify-center text-center border border-white/5 shadow-2xl rounded-[2.5rem] overflow-hidden gap-4 z-10 transition-all duration-700">
+                <div className="w-full">
+                  <p className="text-white font-serif leading-relaxed whitespace-pre-wrap text-shadow-premium text-[1.4rem]">{question.text}</p>
+                  {question.hint && <p className="text-white/60 font-serif text-[0.85rem] mt-5 leading-relaxed">{question.hint}</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* 下部：コントロール */}
+            <div className="flex flex-col items-center justify-center w-full relative h-32">
+              {status === 'idle' ? (
+                <div className="flex flex-col items-center gap-8 w-full fade-in">
+                  <button onClick={() => { setCountdown(3); setStatus('counting'); }} className="btn-glass w-full max-w-[280px] py-5 rounded-full text-[1.1rem] tracking-[0.2em] shadow-xl font-serif flex items-center justify-center gap-3">
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
+                    録音をはじめる
+                  </button>
+                </div>
+              ) : status === 'error' ? (
+                <div className="text-center space-y-6 fade-in">
+                  <CustomIcon name="alert-circle" size={40} className="text-red-400 mx-auto" />
+                  <p className="text-red-200 text-sm leading-relaxed">{errorMsg}</p>
+                  <button onClick={() => setStatus('idle')} className="btn-glass px-6 py-2 rounded-full text-sm">戻る</button>
+                </div>
+              ) : (status === 'recording' || status === 'paused') ? (
+                <div className="flex gap-8 items-center z-10 fade-in">
+                  <button onClick={stopRec} className="w-16 h-16 rounded-full bg-white text-stone-800 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-all"><CustomIcon name="square" size={20} /><span className="text-[0.65rem] font-bold mt-1 font-serif">終了</span></button>
+                  <button onClick={() => { if(status === 'recording') { setStatus('paused'); mediaRecorderRef.current.pause(); } else { setStatus('recording'); mediaRecorderRef.current.resume(); } }} className="w-16 h-16 rounded-full bg-white/10 border border-white/20 text-white flex flex-col items-center justify-center active:scale-95 transition-all">
+                    <CustomIcon name={status === 'recording' ? "pause" : "play"} size={20} /><span className="text-[0.65rem] font-bold mt-1 font-serif">{status === 'recording' ? "一時停止" : "再開"}</span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ▼▼▼ レビュー画面（文章整形＆編集機能） ▼▼▼
+    // ==========================================
+    function ReviewView({ data, onBack, onSave }) {
+      const [currentStep, setCurrentStep] = useState(1); 
+      const [steps, setSteps] = useState({ step1: "", step2: "", tags: [], era: "", emotion: "" });
+      const [loading, setLoading] = useState(true);
+      const [isSaving, setIsSaving] = useState(false);
+      const [isPlaying, setIsPlaying] = useState(false);
+      const audioObj = useRef(null);
+      const [isEditing, setIsEditing] = useState(false);
+      const [editTempText, setEditTempText] = useState("");
+
+      useEffect(() => {
+        const transcript = (data.transcriptText || "").trim();
+        callGasApi('generateSteps', { transcript: transcript, audioBase64: data.audioBase64 })
+          .then(res => {
+            if (res.success) {
+              try {
+                const parsed = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+                if (parsed.error) throw new Error(parsed.error);
+                setSteps({ step1: parsed.step1 || "", step2: parsed.step2 || "", tags: parsed.tags || [], era: parsed.era || "", emotion: parsed.emotion || "" });
+              } catch(e) { setSteps({ step1: res.data, step2: "", tags: [], era: "", emotion: "" }); }
+            } else { throw new Error(res.error); }
+            setLoading(false);
+          })
+          .catch(err => { setSteps({ step1: "(エラーが発生しました。)", step2: "", tags: [], era: "", emotion: "" }); setLoading(false); });
+      }, [data]);
+
+      const togglePlay = () => {
+        if (isPlaying) { if (audioObj.current) { audioObj.current.pause(); audioObj.current.currentTime = 0; } setIsPlaying(false); } 
+        else {
+          try {
+            const player = new Audio(); player.src = data.fullAudioDataUrl; player.onended = () => setIsPlaying(false);
+            audioObj.current = player;
+            player.play().then(() => setIsPlaying(true)).catch(e => console.error(e));
+          } catch(e) {}
+        }
+      };
+
+      const handleTabChange = (step) => { if (isEditing) { setSteps(prev => ({ ...prev, [`step${currentStep}`]: editTempText })); setIsEditing(false); } setCurrentStep(step); };
+      const startEditing = () => { setEditTempText(steps[`step${currentStep}`]); setIsEditing(true); };
+      const saveEdit = () => { setSteps(prev => ({ ...prev, [`step${currentStep}`]: editTempText })); setIsEditing(false); };
+      const cancelEdit = () => { setIsEditing(false); };
+
+      return (
+        <div className="h-full w-full flex flex-col px-4 py-8 fade-in overflow-hidden bg-slate-900/40">
+          <header className="flex mb-4 border-b border-white/5 font-serif">
+            {[1, 2].map(s => (<button key={s} onClick={() => handleTabChange(s)} className={`step-tab ${currentStep === s ? 'active' : ''}`}>Step {s}</button>))}
+          </header>
+          
+          {!loading && (steps.era || steps.emotion || (steps.tags && steps.tags.length > 0)) && (
+            <div className="flex flex-wrap gap-2 mb-4 px-2 fade-in">
+              <CustomIcon name="tag" size={16} className="text-white/40 mt-1" />
+              {steps.era && steps.era !== "不明" && <span className="bg-white/10 text-white/80 text-xs px-3 py-1.5 rounded-full border border-white/5">{steps.era}</span>}
+              {steps.emotion && steps.emotion !== "不明" && <span className="bg-white/10 text-white/80 text-xs px-3 py-1.5 rounded-full border border-white/5">{steps.emotion}</span>}
+              {steps.tags && steps.tags.map(t => <span key={t} className="bg-white/10 text-white/80 text-xs px-3 py-1.5 rounded-full border border-white/5">#{t}</span>)}
+            </div>
+          )}
+
+          <div className={`flex-1 rounded-[2rem] border border-white/10 p-6 shadow-inner overflow-y-auto relative mb-6 transition-colors ${isEditing ? 'bg-white/10' : 'bg-black/20'}`}>
+            {loading ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 font-serif">
+                <CustomIcon name="loader-2" className="loader-spin text-white/40" size={32} />
+                <p className="text-white/40 text-sm font-serif">言葉を編み、文脈を整理しています...</p>
+              </div>
+            ) : (
+              isEditing ? (
+                <textarea value={editTempText} onChange={(e) => setEditTempText(e.target.value)} className="w-full h-full bg-transparent text-white font-serif text-[1.1rem] leading-[2.2] outline-none resize-none" autoFocus />
+              ) : (
+                <div className="font-serif leading-[2.2] text-white text-[1.1rem] whitespace-pre-wrap text-shadow-premium pb-10 clearfix">
+                  <button onClick={startEditing} className="float-right ml-4 mb-2 bg-white/10 p-3 rounded-full text-white/70 hover:text-white hover:bg-white/20 transition-all shadow-lg backdrop-blur-md"><CustomIcon name="pencil" size={18} /></button>
+                  {steps[`step${currentStep}`]}
+                </div>
+              )
+            )}
+          </div>
+          
+          <div className="flex flex-col gap-4 px-2">
+            {isEditing ? (
+              <div className="flex gap-4 font-serif fade-in">
+                <button onClick={cancelEdit} className="flex-1 py-4 text-white/60 text-[1rem] border border-white/20 rounded-full bg-white/5 active:bg-white/10 transition-colors font-serif">キャンセル</button>
+                <button onClick={saveEdit} className="flex-1 py-4 text-white text-[1rem] border border-white/50 rounded-full bg-white/20 active:bg-white/30 transition-colors font-serif flex items-center justify-center gap-2"><CustomIcon name="check" size={18} />修正を完了する</button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4 fade-in">
+                <button onClick={() => { setIsSaving(true); onSave(steps, data.audioBase64, () => setIsSaving(false)); }} disabled={loading || isSaving} className="btn-glass w-full py-5 rounded-full text-[1.1rem] shadow-xl flex items-center justify-center gap-3 font-serif">
+                  {isSaving ? <CustomIcon name="loader-2" className="loader-spin" size={20} /> : "この内容で保存する"}
+                </button>
+                <div className="flex gap-4 font-serif">
+                  <button onClick={togglePlay} className="flex-1 py-3 text-white/70 text-[0.85rem] border border-white/10 rounded-full flex items-center justify-center gap-2 bg-white/5 active:bg-white/10 transition-colors font-serif"><CustomIcon name={isPlaying ? "square" : "play"} size={16} /><span>{isPlaying ? "停止" : "再生"}</span></button>
+                  <button onClick={onBack} disabled={isSaving} className="flex-1 py-3 text-white/30 text-[0.85rem] text-center underline underline-offset-4 font-serif">やり直す</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ▼▼▼ 体験版完了画面（静かな分岐UI） ▼▼▼
+    // ==========================================
+    function DemoCompletionView({ savedSteps, episodeId }) {
+      // 1ページ目っぽく見せるためのテキスト抜粋
+      const snippet = savedSteps?.step2 ? savedSteps.step2.substring(0, 70) + " …" : "（音声データが保存されました）";
+      const today = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // 【重要】URLパラメータにIDを忍ばせてGoogleフォームを開く関数
+      const handleSaveAndGo = () => {
+        // 例: ?usp=pp_url&entry.123456789=KOE-XXXXXX
+        const urlWithId = `${FORM_SAVE_BASE_URL}?usp=pp_url&${FORM_SAVE_ENTRY_ID}=${episodeId}`;
+        window.open(urlWithId, '_blank');
+      };
+
+      const handleFeedbackOnly = () => {
+        window.open(FORM_FEEDBACK_URL, '_blank');
+      };
+
+      return (
+        <div className="h-full w-full flex flex-col p-6 py-10 fade-in overflow-y-auto bg-slate-900/60 font-serif">
+          
+          <div className="text-center mb-8">
+            <h2 className="text-xl text-white font-bold tracking-wider mb-2 text-shadow-premium">あなたの声が、<br/>物語として刻まれました。</h2>
+          </div>
+
+          {/* ▼ 記憶の結晶化（本の1ページ目カード） ▼ */}
+          <div className="w-full bg-white text-slate-800 rounded-lg shadow-2xl p-6 mb-8 relative overflow-hidden transform transition-all hover:scale-[1.02]">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-amber-100 to-transparent opacity-50"></div>
+            <div className="border-b-2 border-slate-200 pb-3 mb-4 flex justify-between items-end">
+              <span className="text-xs font-bold text-slate-400 tracking-widest">{today}</span>
+              <CustomIcon name="book" size={16} className="text-slate-300" />
+            </div>
+            
+            <p className="text-[1.05rem] leading-[2.2] text-slate-700 font-serif whitespace-pre-wrap mb-6">{snippet}</p>
+            
+            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+              {savedSteps?.emotion && savedSteps.emotion !== "不明" && <span className="text-[0.7rem] bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-100">{savedSteps.emotion}</span>}
+              {savedSteps?.tags && savedSteps.tags.map(t => <span key={t} className="text-[0.7rem] bg-slate-50 text-slate-500 px-2 py-1 rounded border border-slate-200">#{t}</span>)}
+            </div>
+          </div>
+
+          {/* ▼ 静かな問いかけエリア ▼ */}
+          <div className="text-center mt-2 mb-10 space-y-4">
+             <p className="text-white/80 font-serif leading-loose text-[0.95rem]">
+               このページは、一時的に保存されています。<br/>
+               このままだと、やがて消えてしまいます。<br/>
+               <br/>
+               あなたの声を、この先も残しておきますか？
+             </p>
+          </div>
+
+          {/* ▼ CTAボタンエリア（分岐） ▼ */}
+          <div className="flex flex-col gap-5 mt-auto pb-6">
+            <button onClick={handleSaveAndGo} className="btn-glass w-full py-5 rounded-full text-[1rem] shadow-xl flex items-center justify-center gap-2 bg-white/20 border-white/50 hover:bg-white/30 transition-all text-white font-bold tracking-wider">
+              はい、物語を残す
+            </button>
+            
+            <button onClick={handleFeedbackOnly} className="w-full py-2 text-white/50 text-[0.85rem] hover:text-white transition-all underline underline-offset-4 font-serif">
+              今回は残さない（体験の感想だけ送る）
+            </button>
+          </div>
+
+        </div>
+      );
+    }
+
+    const startApp = () => { const container = document.getElementById('root'); if (container) { const root = ReactDOM.createRoot(container); root.render(<App />); } };
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', startApp); } else { startApp(); }
+  </script>
+</body>
+</html>
