@@ -55,14 +55,11 @@
     // ==========================================
     // ★ 各種連携URL設定エリア ★
     // ==========================================
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwW9D445s2355Ine8cqxUwvk9a_cz1b2jmNlZpaWc05f-M3qJbKeWdD9iI0n38HeRwG/exec";
+    const GAS_API_URL = "ここにGASのURLを貼り付けてください";
     
-    // 【重要】GoogleフォームのURLとパラメータ設定
-    // 1. 「残す（コア層向け）」フォーム
     const FORM_SAVE_BASE_URL = "https://docs.google.com/forms/d/e/YOUR_FORM_A_ID/viewform";
-    const FORM_SAVE_ENTRY_ID = "entry.123456789"; // フォームAの「キー保管用」の非表示設問ID
+    const FORM_SAVE_ENTRY_ID = "entry.123456789"; 
 
-    // 2. 「感想のみ（ライト層向け）」フォーム
     const FORM_FEEDBACK_URL = "https://docs.google.com/forms/d/e/YOUR_FORM_B_ID/viewform";
 
     const callGasApi = async (action, payload) => {
@@ -89,7 +86,15 @@
       return await response.json();
     };
 
-    // 体験版用の質問コンテンツ
+    // ==========================================
+    // ▼▼▼ コンテンツデータ ▼▼▼
+    // ==========================================
+    const TEST_QUESTION = {
+      theme: "サウンドチェック",
+      text: "あなたの声が届いているか確認しましょう。\n今日の天気はどうですか？", 
+      hint: "💡天候や気温、快適さなど、感じたまま話してみて"
+    };
+
     const DEMO_QUESTION = {
       theme: "koe 特別体験版",
       text: "最近、少しだけ嬉しかったことや、\n心が動いた出来事はありましたか？", 
@@ -120,16 +125,24 @@
       const [currentData, setCurrentData] = useState(null); 
       const [savedSteps, setSavedSteps] = useState(null);
       const [episodeId, setEpisodeId] = useState("");
+      
+      // テストモードの判定ステート
+      const [isTestMode, setIsTestMode] = useState(false);
 
-      const handleStart = () => {
-        // 裏側で専用IDを発行（ユーザーには見せない）
+      const handleStartTest = () => {
+        setIsTestMode(true);
+        setView('question_recording');
+      };
+
+      const handleStartDemo = () => {
+        setIsTestMode(false);
         setEpisodeId('KOE-' + Math.random().toString(36).substr(2, 6).toUpperCase());
         setView('question_recording');
       };
 
       const handleSave = (ansData, audioBase64, callback) => {
         setSavedSteps(ansData);
-        // 発行したIDを questionId としてGASに送る（スプレッドシート連携用）
+        // isDemo: true を付与して送信（GAS側でシートを振り分けるため）
         const payload = { data: { ...ansData, audioBase64: audioBase64, questionId: episodeId || 'Demo-1', weekNumber: 0, isDemo: true } };
 
         callGasApi('saveAnswer', payload).then(res => {
@@ -143,9 +156,25 @@
       return (
         <div className="app-container font-serif">
           {view === 'top' && <TopView onNext={() => setView('intro')} />}
-          {view === 'intro' && <IntroView onStart={handleStart} />}
-          {view === 'question_recording' && <QuestionRecordingView question={DEMO_QUESTION} onComplete={(recordingData) => { setCurrentData(recordingData); setView('review'); }} />}
-          {view === 'review' && <ReviewView data={currentData} onBack={() => setView('question_recording')} onSave={handleSave} />}
+          {view === 'intro' && <IntroView onStartTest={handleStartTest} onStartReal={handleStartDemo} />}
+          
+          {view === 'question_recording' && (
+            <QuestionRecordingView 
+              question={isTestMode ? TEST_QUESTION : DEMO_QUESTION} 
+              onComplete={(recordingData) => { setCurrentData(recordingData); setView('review'); }} 
+            />
+          )}
+          
+          {view === 'review' && (
+            <ReviewView 
+              data={currentData} 
+              isTestMode={isTestMode}
+              onTestComplete={() => handleStartDemo()} 
+              onBack={() => setView('question_recording')} 
+              onSave={handleSave} 
+            />
+          )}
+          
           {view === 'demo_complete' && <DemoCompletionView savedSteps={savedSteps} episodeId={episodeId} />}
         </div>
       );
@@ -169,9 +198,11 @@
     }
 
     // ==========================================
-    // ▼▼▼ イントロ画面 ▼▼▼
+    // ▼▼▼ イントロ画面（分岐ボタン付き） ▼▼▼
     // ==========================================
-    function IntroView({ onStart }) {
+    function IntroView({ onStartTest, onStartReal }) {
+      const [showMenu, setShowMenu] = useState(false);
+
       return (
         <div className="h-full w-full flex flex-col justify-between items-center py-16 px-10 fade-in text-center">
           <div className="space-y-10 flex-1 flex flex-col justify-center text-shadow-premium">
@@ -179,15 +210,23 @@
             <p className="text-[1.1rem]">うまく話さなくて大丈夫。<br />まとまっていなくても大丈夫。</p>
             <p className="text-[1.1rem]">まずは、ほんの少しだけ。<br/>あなたの声を聴かせてください。</p>
           </div>
-          <div className="w-full max-w-xs pb-10">
-            <button onClick={onStart} className="btn-glass w-full py-6 rounded-full text-[1.2rem] tracking-[0.3em] text-shadow-premium font-serif fade-in">体験をはじめる</button>
+          
+          <div className="w-full max-w-xs pb-10 flex flex-col items-center justify-end h-32">
+            {!showMenu ? (
+              <button onClick={() => setShowMenu(true)} className="btn-glass w-full py-6 rounded-full text-[1.2rem] tracking-[0.3em] text-shadow-premium font-serif fade-in">体験をはじめる</button>
+            ) : (
+              <div className="w-full flex flex-col gap-5 fade-in">
+                <button onClick={onStartTest} className="btn-glass w-full py-5 rounded-full text-[1.05rem] shadow-xl font-serif bg-white/20">マイクのテストをしてみる</button>
+                <button onClick={onStartReal} className="w-full py-2 text-white/50 text-[0.95rem] hover:text-white transition-all underline underline-offset-4 font-serif">さっそく体験の問いに進む</button>
+              </div>
+            )}
           </div>
         </div>
       );
     }
 
     // ==========================================
-    // ▼▼▼ ワンルーム録音画面（時間表示控えめ版） ▼▼▼
+    // ▼▼▼ ワンルーム録音画面 ▼▼▼
     // ==========================================
     function QuestionRecordingView({ question, onComplete }) {
       const [status, setStatus] = useState('idle');
@@ -283,14 +322,13 @@
 
       return (
         <div className="h-full w-full flex flex-col px-8 py-12 fade-in relative">
-          {/* カウントダウンオーバーレイ */}
+          
           {status === 'counting' && (
             <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center fade-in">
               <span key={countdown} className="font-serif text-white text-[10rem] opacity-90 drop-shadow-[0_0_40px_rgba(255,255,255,0.4)] animate-pulse">{countdown}</span>
             </div>
           )}
 
-          {/* 上部：時間表示（録音中のみ） */}
           <header className="mb-6 text-center font-serif flex flex-col items-center justify-center relative z-10 min-h-[60px]">
             {status === 'idle' ? (
               <h2 className="text-[1.2rem] text-white/50 mt-2 font-normal">{question.theme}</h2>
@@ -303,7 +341,6 @@
           </header>
 
           <div className="flex-1 flex flex-col items-center justify-between space-y-6">
-            {/* 中央：質問カード */}
             <div className="card-stack w-full relative min-h-[220px] flex-shrink-0">
               <div className="absolute inset-0 bg-white/5 translate-y-6 scale-95 opacity-10 rounded-[2.5rem]"></div>
               <div className="absolute inset-0 bg-white/10 translate-y-3 scale-[0.98] opacity-20 rounded-[2.5rem]"></div>
@@ -315,7 +352,6 @@
               </div>
             </div>
 
-            {/* 下部：コントロール */}
             <div className="flex flex-col items-center justify-center w-full relative h-32">
               {status === 'idle' ? (
                 <div className="flex flex-col items-center gap-8 w-full fade-in">
@@ -345,9 +381,9 @@
     }
 
     // ==========================================
-    // ▼▼▼ レビュー画面（文章整形＆編集機能） ▼▼▼
+    // ▼▼▼ レビュー画面（テスト判別対応版） ▼▼▼
     // ==========================================
-    function ReviewView({ data, onBack, onSave }) {
+    function ReviewView({ data, isTestMode, onTestComplete, onBack, onSave }) {
       const [currentStep, setCurrentStep] = useState(1); 
       const [steps, setSteps] = useState({ step1: "", step2: "", tags: [], era: "", emotion: "" });
       const [loading, setLoading] = useState(true);
@@ -430,9 +466,15 @@
               </div>
             ) : (
               <div className="flex flex-col gap-4 fade-in">
-                <button onClick={() => { setIsSaving(true); onSave(steps, data.audioBase64, () => setIsSaving(false)); }} disabled={loading || isSaving} className="btn-glass w-full py-5 rounded-full text-[1.1rem] shadow-xl flex items-center justify-center gap-3 font-serif">
-                  {isSaving ? <CustomIcon name="loader-2" className="loader-spin" size={20} /> : "この内容で保存する"}
-                </button>
+                {isTestMode ? (
+                  <button onClick={onTestComplete} className="w-full py-5 rounded-full bg-white text-slate-900 font-bold tracking-widest shadow-xl text-[1.05rem] font-serif">
+                    準備完了。体験の問いへ進む
+                  </button>
+                ) : (
+                  <button onClick={() => { setIsSaving(true); onSave(steps, data.audioBase64, () => setIsSaving(false)); }} disabled={loading || isSaving} className="btn-glass w-full py-5 rounded-full text-[1.1rem] shadow-xl flex items-center justify-center gap-3 font-serif">
+                    {isSaving ? <CustomIcon name="loader-2" className="loader-spin" size={20} /> : "この内容で保存する"}
+                  </button>
+                )}
                 <div className="flex gap-4 font-serif">
                   <button onClick={togglePlay} className="flex-1 py-3 text-white/70 text-[0.85rem] border border-white/10 rounded-full flex items-center justify-center gap-2 bg-white/5 active:bg-white/10 transition-colors font-serif"><CustomIcon name={isPlaying ? "square" : "play"} size={16} /><span>{isPlaying ? "停止" : "再生"}</span></button>
                   <button onClick={onBack} disabled={isSaving} className="flex-1 py-3 text-white/30 text-[0.85rem] text-center underline underline-offset-4 font-serif">やり直す</button>
@@ -448,13 +490,10 @@
     // ▼▼▼ 体験版完了画面（静かな分岐UI） ▼▼▼
     // ==========================================
     function DemoCompletionView({ savedSteps, episodeId }) {
-      // 1ページ目っぽく見せるためのテキスト抜粋
       const snippet = savedSteps?.step2 ? savedSteps.step2.substring(0, 70) + " …" : "（音声データが保存されました）";
       const today = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
 
-      // 【重要】URLパラメータにIDを忍ばせてGoogleフォームを開く関数
       const handleSaveAndGo = () => {
-        // 例: ?usp=pp_url&entry.123456789=KOE-XXXXXX
         const urlWithId = `${FORM_SAVE_BASE_URL}?usp=pp_url&${FORM_SAVE_ENTRY_ID}=${episodeId}`;
         window.open(urlWithId, '_blank');
       };
@@ -470,7 +509,6 @@
             <h2 className="text-xl text-white font-bold tracking-wider mb-2 text-shadow-premium">あなたの声が、<br/>物語として刻まれました。</h2>
           </div>
 
-          {/* ▼ 記憶の結晶化（本の1ページ目カード） ▼ */}
           <div className="w-full bg-white text-slate-800 rounded-lg shadow-2xl p-6 mb-8 relative overflow-hidden transform transition-all hover:scale-[1.02]">
             <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-amber-100 to-transparent opacity-50"></div>
             <div className="border-b-2 border-slate-200 pb-3 mb-4 flex justify-between items-end">
@@ -486,7 +524,6 @@
             </div>
           </div>
 
-          {/* ▼ 静かな問いかけエリア ▼ */}
           <div className="text-center mt-2 mb-10 space-y-4">
              <p className="text-white/80 font-serif leading-loose text-[0.95rem]">
                このページは、一時的に保存されています。<br/>
@@ -496,7 +533,6 @@
              </p>
           </div>
 
-          {/* ▼ CTAボタンエリア（分岐） ▼ */}
           <div className="flex flex-col gap-5 mt-auto pb-6">
             <button onClick={handleSaveAndGo} className="btn-glass w-full py-5 rounded-full text-[1rem] shadow-xl flex items-center justify-center gap-2 bg-white/20 border-white/50 hover:bg-white/30 transition-all text-white font-bold tracking-wider">
               はい、物語を残す
