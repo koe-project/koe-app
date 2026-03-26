@@ -387,8 +387,19 @@
       );
     }
 
-    const startApp = () => { const root = ReactDOM.createRoot(document.getElementById('root')); root.render(<App />); };
-    document.addEventListener('DOMContentLoaded', startApp);
+　　　const startApp = () => { 
+      const container = document.getElementById('root'); 
+      if (container) { 
+        const root = ReactDOM.createRoot(container); 
+        root.render(<App />); 
+      } 
+    };
+    // 画面の読み込みが既に終わっている場合の安全対策
+    if (document.readyState === 'loading') { 
+      document.addEventListener('DOMContentLoaded', startApp); 
+    } else { 
+      startApp(); 
+    }
   </script>
 </body>
 </html>
