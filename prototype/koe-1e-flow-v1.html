@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Koe-1E 体験プロトタイプ 最終完成版</title>
+  
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
+
+  <style>
+    body { 
+      font-family: 'Noto Serif JP', serif; 
+      margin: 0; padding: 0; 
+      background-color: #0f172a; 
+      color: #f8fafc;
+      height: 100vh; overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    .app-container { display: flex; flex-direction: column; height: 100dvh; max-width: 600px; margin: 0 auto; position: relative; }
+    
+    .fade-enter { animation: fadeIn var(--fade-speed) ease-out forwards; }
+    .fade-enter-delayed { opacity: 0; animation: fadeIn var(--fade-speed) ease-out forwards; animation-delay: var(--delay-time); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .btn-quiet {
+      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.8); transition: all 0.4s ease; backdrop-filter: blur(10px);
+    }
+    .btn-quiet:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.1); }
+    .text-narrative { line-height: var(--line-height); letter-spacing: var(--letter-spacing); }
+    .glass-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef } = React;
+
+    const UX_CONFIG = {
+      preVoiceSeconds: 3000,
+      fadeSpeed: "1.2s",
+      baseFontSize: "1rem",
+      lineHeight: "2.4",
+      letterSpacing: "0.08em"
+    };
+
+    document.documentElement.style.setProperty('--fade-speed', UX_CONFIG.fadeSpeed);
+    document.documentElement.style.setProperty('--line-height', UX_CONFIG.lineHeight);
+    document.documentElement.style.setProperty('--letter-spacing', UX_CONFIG.letterSpacing);
+
+    const QUESTIONS_DB = [
+      { chapter: "Chapter 1：思い出す", text: "人生で一番おいしかったご飯の記憶はありますか？", preview: "少し昔の記憶に触れるものです" },
+      { chapter: "Chapter 1：思い出す", text: "誰かに言えなかったけれど、今も心に残っている出来事はありますか？", preview: "誰かとの時間に触れる問いです" },
+      { chapter: "Chapter 2：積み重ねる", text: "あの頃、一番無我夢中でやっていたことは何ですか？", preview: "少し内側に向かう問いです" }
+    ];
+
+    const processVoiceData = async (transcript) => {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          // 1. 整文
+          let edited = transcript.replace(/えっと|あのー|なんか|そのー/g, '')
+                                 .replace(/、+/g, '、')
+                                 .replace(/(。|！|？)/g, '$1\n\n'); 
+          
+          if(!edited.trim()) edited = "（音声が認識されませんでした。静かな時間が流れていたようです）";
+
+          // 2. AIミラーの揺らぎ
+          const mirrors = ["穏やかな時間が伝わってきました", "その頃の空気が、静かに残っています", "誰かとの距離感が、にじんでいます"];
+          let mirror = mirrors[1];
+          if (transcript.match(/嬉し|悲し|辛|楽|寂|温/)) mirror = mirrors[0];
+          else if (transcript.match(/母|父|子|妻|夫|友|家族/)) mirror = mirrors[2];
+
+          // 3. 次回への接続用1文抽出（スコアリングアルゴリズム実装）
+          const scoreSentence = (s) => {
+            let score = 0;
+            if (s.match(/嬉|悲|辛|懐|温|楽|寂/)) score += 3;
+            if (s.match(/母|父|子|妻|夫|家族|友/)) score += 2;
+            if (s.match(/昔|あの頃|当時/)) score += 2;
+            if (s.length > 15) score += 1;
+            return score;
+          };
+
+          let sentences = edited.split('\n\n').map(s => s.trim()).filter(Boolean);
+          let bestSnippet = "あの頃は無我夢中で、周りが見えていなかったけれど…"; // デフォルト
+          
+          if (sentences.length > 0) {
+            let best = sentences.sort((a,b) => scoreSentence(b) - scoreSentence(a))[0];
+            bestSnippet = best.replace(/[\n\r]/g, '').substring(0, 45) + "…";
+          }
+          
+          let finalSnippet = "「" + bestSnippet + "」";
+
+          resolve({ editedText: edited, aiMirror: mirror, extractedSnippet: finalSnippet });
+        }, 2500);
+      });
+    };
+
+    function App() {
+      const [isInitializing, setIsInitializing] = useState(true);
+      const [scene, setScene] = useState(-1); 
+      
+      const [progress, setProgress] = useState({
+        currentIndex: 0,
+        total: 30,
+        lastSnippet: ""
+      });
+      
+      const [voiceData, setVoiceData] = useState({ transcript: "", editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" });
+
+      const currentQ = QUESTIONS_DB[progress.currentIndex % QUESTIONS_DB.length];
+      const nextQ = QUESTIONS_DB[(progress.currentIndex + 1) % QUESTIONS_DB.length];
+
+      // ▼ 完璧なScene0表示ロジック（初回強制 ＋ 24時間ルール）
+      useEffect(() => {
+        const hasStarted = localStorage.getItem('koe_has_started');
+        const lastVisit = localStorage.getItem('koe_last_visit');
+        const now = Date.now();
+        const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+        
+        if (!hasStarted) {
+          setScene(0);
+          localStorage.setItem('koe_has_started', 'true');
+        } else if (!lastVisit || (now - parseInt(lastVisit)) > TWENTY_FOUR_HOURS) {
+          setScene(0);
+        } else {
+          setScene(1);
+        }
+        setIsInitializing(false);
+      }, []);
+
+      const markVisit = () => localStorage.setItem('koe_last_visit', Date.now().toString());
+
+      const goToNextQuestion = () => {
+        setProgress(p => ({
+          ...p, 
+          currentIndex: p.currentIndex + 1,
+          lastSnippet: voiceData.extractedSnippet || p.lastSnippet 
+        }));
+        setVoiceData({ transcript: "", editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" });
+        markVisit();
+        setScene(2); 
+      };
+
+      const goToScene1 = () => { 
+        setProgress(p => ({
+          ...p,
+          lastSnippet: voiceData.extractedSnippet || p.lastSnippet 
+        }));
+        markVisit(); 
+        setScene(1); 
+      };
+
+      if (isInitializing) return <div className="bg-[#0f172a] h-screen w-screen" />;
+
+      return (
+        <div className="app-container px-6 py-10" style={{ fontSize: UX_CONFIG.baseFontSize }}>
+          {scene === 0 && <Scene0_Door onNext={goToScene1} />}
+          {scene === 1 && <Scene1_MyPage progress={progress} question={currentQ} onNext={() => setScene(2)} />}
+          {scene === 2 && <Scene2_PreVoice onNext={() => setScene(3)} duration={UX_CONFIG.preVoiceSeconds} />}
+          {scene === 3 && <Scene3_Recording question={currentQ} onComplete={(txt) => { setVoiceData(prev => ({...prev, transcript: txt})); setScene(4); }} />}
+          {scene === 4 && <Scene4_AIMirror transcript={voiceData.transcript} onProcessed={(data) => setVoiceData(prev => ({...prev, ...data}))} onNext={() => setScene(5)} onRetry={() => setScene(3)} />}
+          {scene === 5 && <Scene5_Meaning onNext={(tag) => { setVoiceData(prev => ({...prev, meaning: tag})); setScene(6); }} />}
+          {scene === 6 && <Scene6_Completion progress={progress} nextPreview={nextQ.preview} onTalkMore={goToNextQuestion} onBackToBookshelf={goToScene1} />}
+        </div>
+      );
+    }
+
+    function Scene0_Door({ onNext }) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-center fade-enter">
+          <div className="space-y-6 mb-16 text-narrative">
+            <p className="text-[1.1rem] text-white/90">この時間は、少し落ち着いて<br/>過ごせるときに開いてみてください</p>
+            <p className="text-[0.85rem] text-white/40">目安：10〜15分</p>
+            <p className="text-[0.85rem] text-white/40">急がなくて大丈夫です。<br/>あなたのペースで進めていきます。</p>
+          </div>
+          <button onClick={onNext} className="btn-quiet w-full max-w-[280px] py-4 rounded-full tracking-widest text-[0.95rem]">
+            この時間を始める
+          </button>
+        </div>
+      );
+    }
+
+    function Scene1_MyPage({ progress, question, onNext }) {
+      return (
+        <div className="h-full flex flex-col fade-enter">
+          <header className="mb-8">
+            <h1 className="text-white/70 text-sm tracking-widest mb-6">〇〇さんの物語</h1>
+            <div className="space-y-2">
+              <p className="text-white/60 text-xs tracking-widest">{question.chapter}</p>
+              <div className="w-full h-[2px] bg-white/10 rounded-full overflow-hidden">
+                <div className="h-full bg-white/40" style={{ width: `${(progress.currentIndex / progress.total) * 100}%` }}></div>
+              </div>
+              <div className="flex justify-between items-end mt-2">
+                {progress.currentIndex === 0 ? (
+                  <p className="text-white/80 text-sm tracking-widest">Page 1</p>
+                ) : (
+                  <p className="text-white/80 text-sm tracking-widest">{progress.currentIndex} / {progress.total} ページ</p>
+                )}
+              </div>
+              {progress.currentIndex === 0 ? (
+                <p className="text-white/50 text-[0.75rem] tracking-widest mt-1">ここから、あなたの物語がはじまります</p>
+              ) : (
+                <p className="text-white/50 text-[0.75rem] tracking-widest mt-1">あなたの物語は、{progress.currentIndex}ページまで積み重なっています</p>
+              )}
+            </div>
+          </header>
+
+          <div className="flex-1 flex flex-col justify-center">
+            {progress.currentIndex > 0 && progress.lastSnippet && (
+              <div className="mb-10">
+                <p className="text-white/30 text-xs tracking-widest mb-3">前回の語り：</p>
+                <p className="text-white/60 text-[0.95rem] text-narrative pl-4 border-l border-white/20 italic">
+                  {progress.lastSnippet}
+                </p>
+              </div>
+            )}
+            
+            <div className="glass-card p-6 text-center space-y-6">
+              <p className="text-white/50 text-xs tracking-widest">今日の問い</p>
+              <p className="text-[1.1rem] text-narrative text-white/90 whitespace-pre-wrap">
+                {question.text}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 mt-8">
+            <button onClick={onNext} className="btn-quiet bg-white/10 w-full py-4 rounded-full tracking-widest text-white">今回の問いに答える</button>
+            <button className="w-full py-3 text-white/40 text-sm tracking-widest underline underline-offset-4">今日は別の記憶を辿る</button>
+          </div>
+        </div>
+      );
+    }
+
+    function Scene2_PreVoice({ onNext, duration }) {
+      useEffect(() => { const t = setTimeout(onNext, duration); return () => clearTimeout(t); }, []);
+      return (
+        <div className="h-full flex items-center justify-center text-center fade-enter bg-[#0f172a]">
+          <p className="text-[1.1rem] text-white/70 text-narrative tracking-[0.15em] animate-pulse">すぐに答えなくても大丈夫です</p>
+        </div>
+      );
+    }
+
+    function Scene3_Recording({ question, onComplete }) {
+      const [isRec, setIsRec] = useState(false);
+      const [time, setTime] = useState(0);
+      const [finalText, setFinalText] = useState("");
+      const [interimText, setInterimText] = useState("");
+      const recRef = useRef(null);
+
+      const safeWords = ["少し黙っていても大丈夫です", "途中で止めても大丈夫です", "言い直しても問題ありません", "思い出そうとしなくても大丈夫です"];
+      const [safeWord] = useState(safeWords[Math.floor(Math.random() * safeWords.length)]);
+
+      useEffect(() => {
+        let timer;
+        if(isRec) timer = setInterval(() => setTime(t => t + 1), 1000);
+        return () => clearInterval(timer);
+      }, [isRec]);
+
+      const startRec = () => {
+        setIsRec(true);
+        if (!recRef.current) {
+          const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (SpeechRec) {
+            recRef.current = new SpeechRec();
+            recRef.current.lang = 'ja-JP'; recRef.current.continuous = true; recRef.current.interimResults = true;
+            recRef.current.onend = () => setIsRec(false);
+            recRef.current.onresult = e => {
+              let interim = ""; let final = "";
+              for (let i = e.resultIndex; i < e.results.length; ++i) {
+                if (e.results[i].isFinal) final += e.results[i][0].transcript;
+                else interim += e.results[i][0].transcript;
+              }
+              if (final) setFinalText(prev => prev + final);
+              setInterimText(interim);
+            };
+          }
+        }
+        try { recRef.current.start(); } catch(e){}
+      };
+
+      const pauseRec = () => { setIsRec(false); if(recRef.current) recRef.current.stop(); };
+      const stopRec = () => {
+        setIsRec(false); if(recRef.current) recRef.current.stop();
+        const fullText = finalText + interimText;
+        onComplete(fullText || "（沈黙の時間が流れていました）");
+      };
+
+      const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+
+      return (
+        <div className="h-full flex flex-col fade-enter">
+          <p className="text-white/60 text-[1.05rem] text-narrative text-center mt-10 whitespace-pre-wrap">{question.text}</p>
+          <div className="flex-1 flex flex-col items-center justify-center gap-12">
+            {!isRec && time === 0 && !finalText ? (
+              <button onClick={startRec} className="w-20 h-20 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white/70 hover:bg-white/20 transition-all">開始</button>
+            ) : (
+              <div className="flex flex-col items-center gap-6">
+                <p className="font-mono text-3xl tracking-widest text-white/50">{formatTime(time)}</p>
+                <div className="text-white/40 text-[0.85rem] w-full max-w-[240px] h-12 overflow-hidden text-center opacity-60">{interimText}</div>
+                <div className="flex gap-6">
+                  {isRec ? <button onClick={pauseRec} className="w-14 h-14 rounded-full border border-white/20 text-white/50 text-xs">停止</button>
+                         : <button onClick={startRec} className="w-14 h-14 rounded-full border border-white/20 text-white/50 text-xs">再開</button>}
+                  <button onClick={stopRec} className="w-14 h-14 rounded-full bg-white text-slate-900 text-xs font-bold">完了</button>
+                </div>
+              </div>
+            )}
+            <p className={`text-white/30 text-[0.85rem] tracking-widest transition-opacity duration-1000 ${isRec ? 'opacity-100' : 'opacity-0'}`}>{safeWord}</p>
+          </div>
+        </div>
+      );
+    }
+
+    function Scene4_AIMirror({ transcript, onProcessed, onNext, onRetry }) {
+      const [loading, setLoading] = useState(true);
+      const [data, setData] = useState({ editedText: "", aiMirror: "" });
+      const loadingTexts = ["言葉を編んでいます...", "語りの流れを整えています...", "記憶の輪郭をたどっています..."];
+      const [loadingText] = useState(loadingTexts[Math.floor(Math.random() * loadingTexts.length)]);
+
+      useEffect(() => { processVoiceData(transcript).then(res => { setData(res); onProcessed(res); setLoading(false); }); }, [transcript]);
+
+      if (loading) return (
+        <div className="h-full flex flex-col items-center justify-center fade-enter text-white/40 tracking-widest text-sm">
+          <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/80 animate-spin mb-4"></div>
+          {loadingText}
+        </div>
+      );
+
+      return (
+        <div className="h-full flex flex-col fade-enter">
+          <div className="flex-1 overflow-y-auto pb-10">
+            <div className="mb-8 p-4 bg-white/5 border-l-2 border-amber-600/50 rounded-r-lg">
+              <p className="text-amber-50/90 text-[0.95rem] tracking-widest">{data.aiMirror}</p>
+            </div>
+            <div className="text-white/80 text-[1.05rem] text-narrative whitespace-pre-wrap">{data.editedText}</div>
+          </div>
+          <div className="flex flex-col gap-4 pt-6 border-t border-white/10">
+            <button onClick={onNext} className="btn-quiet bg-white/10 w-full py-4 rounded-full tracking-widest text-white">次へ進む</button>
+            <button onClick={onRetry} className="w-full py-2 text-white/30 text-sm tracking-widest underline underline-offset-4">もう一度語り直す</button>
+          </div>
+        </div>
+      );
+    }
+
+    function Scene5_Meaning({ onNext }) {
+      const tags = ["少し懐かしい時間", "誰かを思い出す時間", "自分を振り返る時間", "言葉にできなかった時間"];
+      return (
+        <div className="h-full flex flex-col fade-enter">
+          <div className="flex-1 flex flex-col justify-center text-center">
+            <p className="text-white/80 text-[1.1rem] text-narrative mb-10">この語りは、あなたにとって<br/>どんな時間でしたか？</p>
+            <div className="flex flex-col gap-4 px-4">
+              {tags.map(t => <button key={t} onClick={() => onNext(t)} className="btn-quiet py-4 rounded-xl text-[0.95rem] tracking-widest">{t}</button>)}
+            </div>
+          </div>
+          <button onClick={() => onNext("スキップ")} className="mb-6 text-white/30 text-sm tracking-widest underline underline-offset-4 text-center">スキップして保存する</button>
+        </div>
+      );
+    }
+
+    function Scene6_Completion({ progress, nextPreview, onTalkMore, onBackToBookshelf }) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center fade-enter relative bg-black/40">
+          <div className="w-full max-w-[280px] aspect-[1/1.4] bg-white/5 border border-white/10 rounded-sm shadow-2xl mb-12 flex items-center justify-center p-6 relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-white/10 to-transparent"></div>
+             <p className="text-white/20 text-xs tracking-[0.3em] font-serif writing-vertical-rl">Page {progress.currentIndex + 1}</p>
+          </div>
+
+          <div className="text-center space-y-6 text-narrative absolute bottom-28 w-full">
+            <p className="text-white/90 text-[1.05rem] fade-enter-delayed" style={{'--delay-time': '0.5s'}}>この記憶は、確かに残りました</p>
+            {/* ▼ 追加された余韻と意味の接続テキスト */}
+            <p className="text-white/50 text-[0.85rem] fade-enter-delayed" style={{'--delay-time': '1.5s'}}>あなたの物語に、ひとつのページが加わりました</p>
+            <p className="text-white/40 text-[0.8rem] fade-enter-delayed" style={{'--delay-time': '3.0s'}}>このページは、いつか一冊の本になります</p>
+            
+            <div className="pt-8 fade-enter-delayed" style={{'--delay-time': '4.5s'}}>
+              <p className="text-white/30 text-[0.75rem] mb-4">次の問いは、{nextPreview}</p>
+              <div className="flex flex-col gap-3 px-8">
+                {/* ▼ 文言を「もう1ページ、進めてみる」へ変更 */}
+                <button onClick={onTalkMore} className="btn-quiet w-full py-3 rounded-full text-[0.9rem] tracking-widest text-white">もう1ページ、進めてみる</button>
+                <button onClick={onBackToBookshelf} className="text-white/40 text-xs tracking-widest underline mt-2">本棚に戻る</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const startApp = () => { const root = ReactDOM.createRoot(document.getElementById('root')); root.render(<App />); };
+    document.addEventListener('DOMContentLoaded', startApp);
+  </script>
+</body>
+</html>
