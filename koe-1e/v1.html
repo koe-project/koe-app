@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Koe-1E 体験プロトタイプ 最終完成版</title>
+  <title>Koe-1E 本番結合版</title>
   
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -12,27 +12,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
 
   <style>
-    body { 
-      font-family: 'Noto Serif JP', serif; 
-      margin: 0; padding: 0; 
-      background-color: #0f172a; 
-      color: #f8fafc;
-      height: 100vh; overflow: hidden;
-      -webkit-font-smoothing: antialiased;
-    }
+    body { font-family: 'Noto Serif JP', serif; margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; }
     .app-container { display: flex; flex-direction: column; height: 100dvh; max-width: 600px; margin: 0 auto; position: relative; }
-    
     .fade-enter { animation: fadeIn var(--fade-speed) ease-out forwards; }
     .fade-enter-delayed { opacity: 0; animation: fadeIn var(--fade-speed) ease-out forwards; animation-delay: var(--delay-time); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    
-    .btn-quiet {
-      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.8); transition: all 0.4s ease; backdrop-filter: blur(10px);
-    }
+    .btn-quiet { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.8); transition: all 0.4s ease; backdrop-filter: blur(10px); }
     .btn-quiet:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.1); }
+    .btn-quiet:disabled { opacity: 0.5; pointer-events: none; }
     .text-narrative { line-height: var(--line-height); letter-spacing: var(--letter-spacing); }
     .glass-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; }
+    input.quiet-input { background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.2); color: white; width: 100%; padding: 8px 0; outline: none; text-align: center; border-radius: 0; }
+    input.quiet-input:focus { border-bottom-color: rgba(255,255,255,0.6); }
   </style>
 </head>
 <body>
@@ -40,82 +31,109 @@
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef } = React;
 
+    // ==========================================
+    // ⚙️ 設定（あなたのGAS URLを入れてください）
+    // ==========================================
     const UX_CONFIG = {
       preVoiceSeconds: 3000,
       fadeSpeed: "1.2s",
       baseFontSize: "1rem",
       lineHeight: "2.4",
-      letterSpacing: "0.08em"
+      letterSpacing: "0.08em",
+      // ▼▼▼ あなたのGASウェブアプリURL ▼▼▼
+      GAS_API_URL: "https://script.google.com/macros/s/AKfycbwGaMY3yskQM1FRzlbNDeIfJpHgDNtrGRgXF2gNldeKyxnfl15UekWzrVudEIeYFVV-/exec"
     };
 
     document.documentElement.style.setProperty('--fade-speed', UX_CONFIG.fadeSpeed);
     document.documentElement.style.setProperty('--line-height', UX_CONFIG.lineHeight);
     document.documentElement.style.setProperty('--letter-spacing', UX_CONFIG.letterSpacing);
 
-    const QUESTIONS_DB = [
-      { chapter: "Chapter 1：思い出す", text: "人生で一番おいしかったご飯の記憶はありますか？", preview: "少し昔の記憶に触れるものです" },
-      { chapter: "Chapter 1：思い出す", text: "誰かに言えなかったけれど、今も心に残っている出来事はありますか？", preview: "誰かとの時間に触れる問いです" },
-      { chapter: "Chapter 2：積み重ねる", text: "あの頃、一番無我夢中でやっていたことは何ですか？", preview: "少し内側に向かう問いです" }
-    ];
-
-    const processVoiceData = async (transcript) => {
-      return new Promise(resolve => {
-        setTimeout(() => {
-          // 1. 整文
-          let edited = transcript.replace(/えっと|あのー|なんか|そのー/g, '')
-                                 .replace(/、+/g, '、')
-                                 .replace(/(。|！|？)/g, '$1\n\n'); 
-          
-          if(!edited.trim()) edited = "（音声が認識されませんでした。静かな時間が流れていたようです）";
-
-          // 2. AIミラーの揺らぎ
-          const mirrors = ["穏やかな時間が伝わってきました", "その頃の空気が、静かに残っています", "誰かとの距離感が、にじんでいます"];
-          let mirror = mirrors[1];
-          if (transcript.match(/嬉し|悲し|辛|楽|寂|温/)) mirror = mirrors[0];
-          else if (transcript.match(/母|父|子|妻|夫|友|家族/)) mirror = mirrors[2];
-
-          // 3. 次回への接続用1文抽出（スコアリングアルゴリズム実装）
-          const scoreSentence = (s) => {
-            let score = 0;
-            if (s.match(/嬉|悲|辛|懐|温|楽|寂/)) score += 3;
-            if (s.match(/母|父|子|妻|夫|家族|友/)) score += 2;
-            if (s.match(/昔|あの頃|当時/)) score += 2;
-            if (s.length > 15) score += 1;
-            return score;
-          };
-
-          let sentences = edited.split('\n\n').map(s => s.trim()).filter(Boolean);
-          let bestSnippet = "あの頃は無我夢中で、周りが見えていなかったけれど…"; // デフォルト
-          
-          if (sentences.length > 0) {
-            let best = sentences.sort((a,b) => scoreSentence(b) - scoreSentence(a))[0];
-            bestSnippet = best.replace(/[\n\r]/g, '').substring(0, 45) + "…";
-          }
-          
-          let finalSnippet = "「" + bestSnippet + "」";
-
-          resolve({ editedText: edited, aiMirror: mirror, extractedSnippet: finalSnippet });
-        }, 2500);
+    // ==========================================
+    // 📡 本番API連携ロジック
+    // ==========================================
+    const apiFetch = async (action, data = {}) => {
+      if (!UX_CONFIG.GAS_API_URL || UX_CONFIG.GAS_API_URL.includes("あなたのウェブアプリURL")) {
+        throw new Error("API URLが設定されていません");
+      }
+      const res = await fetch(UX_CONFIG.GAS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' }, 
+        body: JSON.stringify({ action, ...data })
       });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      return json.data;
     };
 
+    const processVoiceData = async (transcript) => {
+      try {
+        const result = await apiFetch('processAudio', { transcriptRaw: transcript });
+        return { 
+          editedText: result.transcript_edited, 
+          aiMirror: result.ai_mirror_text, 
+          extractedSnippet: result.extracted_snippet 
+        };
+      } catch (error) {
+        console.error("AI処理フォールバック:", error);
+        const raw = String(transcript || '').trim();
+        return {
+          editedText: raw || "（音声が認識されませんでした）",
+          aiMirror: "ひとつの時間が、形になっています",
+          extractedSnippet: "「" + raw.slice(0, 45) + (raw.length > 45 ? "…" : "") + "」"
+        };
+      }
+    };
+
+    // ==========================================
+    // 🎬 メインアプリ
+    // ==========================================
     function App() {
       const [isInitializing, setIsInitializing] = useState(true);
-      const [scene, setScene] = useState(-1); 
+      const [scene, setScene] = useState(-2); // -2: Loading, -1: Login, 0~: App
       
-      const [progress, setProgress] = useState({
-        currentIndex: 0,
-        total: 30,
-        lastSnippet: ""
-      });
-      
-      const [voiceData, setVoiceData] = useState({ transcript: "", editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" });
+      const [user, setUser] = useState(null);
+      const [questionsDB, setQuestionsDB] = useState([]);
+      const [progress, setProgress] = useState({ currentIndex: 0, total: 30, lastSnippet: "" });
+      const [voiceData, setVoiceData] = useState({ duration: 0, transcript: "", editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" });
 
-      const currentQ = QUESTIONS_DB[progress.currentIndex % QUESTIONS_DB.length];
-      const nextQ = QUESTIONS_DB[(progress.currentIndex + 1) % QUESTIONS_DB.length];
-
-      // ▼ 完璧なScene0表示ロジック（初回強制 ＋ 24時間ルール）
+      // アプリ起動時の初期化（Questions取得 ＆ ユーザー認証）
       useEffect(() => {
+        const initApp = async () => {
+          try {
+            // マスターから問いを取得
+            const qList = await apiFetch('getQuestions');
+            setQuestionsDB(qList);
+            setProgress(p => ({ ...p, total: qList.length || 30 }));
+
+            // ユーザー情報がローカルにあれば自動ログイン
+            const storedEmail = localStorage.getItem('koe_user_email');
+            const storedName = localStorage.getItem('koe_user_name');
+            const lastSnippet = localStorage.getItem('koe_last_snippet') || "";
+
+            if (storedEmail) {
+              const userData = await apiFetch('upsertUser', { userData: { email: storedEmail, name: storedName } });
+              setUser({ ...userData, email: storedEmail, name: storedName });
+              
+              // サーバーの進行状況に同期（※APIがcurrent_sequence_orderを返すと仮定。未実装なら1とする）
+              const seqOrder = userData.current_sequence_order || 1;
+              setProgress(p => ({ ...p, currentIndex: seqOrder - 1, lastSnippet }));
+              
+              checkSceneTransition();
+            } else {
+              // ログイン画面へ
+              setScene(-1);
+            }
+          } catch (e) {
+            console.error("初期化エラー:", e);
+            alert("初期化に失敗しました。API設定を確認してください。");
+          } finally {
+            setIsInitializing(false);
+          }
+        };
+        initApp();
+      }, []);
+
+      const checkSceneTransition = () => {
         const hasStarted = localStorage.getItem('koe_has_started');
         const lastVisit = localStorage.getItem('koe_last_visit');
         const now = Date.now();
@@ -129,42 +147,115 @@
         } else {
           setScene(1);
         }
-        setIsInitializing(false);
-      }, []);
+      };
 
       const markVisit = () => localStorage.setItem('koe_last_visit', Date.now().toString());
 
+      const handleLoginSubmit = async (email, name) => {
+        setIsInitializing(true);
+        try {
+          const userData = await apiFetch('upsertUser', { userData: { email, name } });
+          setUser({ ...userData, email, name });
+          localStorage.setItem('koe_user_email', email);
+          localStorage.setItem('koe_user_name', name);
+          
+          const seqOrder = userData.current_sequence_order || 1;
+          setProgress(p => ({ ...p, currentIndex: seqOrder - 1 }));
+          checkSceneTransition();
+        } catch(e) {
+          alert("ログインに失敗しました");
+        } finally {
+          setIsInitializing(false);
+        }
+      };
+
+      const handleSaveAnswer = async (meaningTag) => {
+        const currentQ = questionsDB[progress.currentIndex] || {};
+        const answerData = {
+          user_id: user.user_id,
+          question_id: currentQ.question_id || `Q${progress.currentIndex + 1}`,
+          chapter: currentQ.chapter || "",
+          sequence_order: progress.currentIndex + 1,
+          transcript_raw: voiceData.transcript,
+          transcript_edited: voiceData.editedText,
+          ai_mirror_text: voiceData.aiMirror,
+          extracted_snippet: voiceData.extractedSnippet,
+          meaning_answer: meaningTag,
+          privacy_level: 'private',
+          duration_seconds: voiceData.duration,
+          status: "saved"
+        };
+        
+        try {
+          // DBに保存
+          await apiFetch('saveAnswer', { answerData });
+          
+          // 次の回の為にスニペットをローカル保存
+          localStorage.setItem('koe_last_snippet', voiceData.extractedSnippet);
+          
+          setVoiceData(prev => ({...prev, meaning: meaningTag}));
+          setScene(6); // 保存完了画面へ
+        } catch(e) {
+          console.error("保存エラー:", e);
+          alert("保存に失敗しましたが、画面を進めます。");
+          setScene(6);
+        }
+      };
+
       const goToNextQuestion = () => {
-        setProgress(p => ({
-          ...p, 
-          currentIndex: p.currentIndex + 1,
-          lastSnippet: voiceData.extractedSnippet || p.lastSnippet 
-        }));
-        setVoiceData({ transcript: "", editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" });
+        setProgress(p => ({ ...p, currentIndex: p.currentIndex + 1, lastSnippet: voiceData.extractedSnippet }));
+        setVoiceData({ duration: 0, transcript: "", editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" });
         markVisit();
         setScene(2); 
       };
 
       const goToScene1 = () => { 
-        setProgress(p => ({
-          ...p,
-          lastSnippet: voiceData.extractedSnippet || p.lastSnippet 
-        }));
+        setProgress(p => ({ ...p, lastSnippet: voiceData.extractedSnippet || p.lastSnippet }));
         markVisit(); 
         setScene(1); 
       };
 
-      if (isInitializing) return <div className="bg-[#0f172a] h-screen w-screen" />;
+      if (isInitializing) return <div className="bg-[#0f172a] h-screen w-screen flex items-center justify-center"><p className="text-white/30 tracking-widest text-sm">読み込んでいます...</p></div>;
+
+      const currentQ = questionsDB[progress.currentIndex % questionsDB.length] || { chapter: "", text: "（問いを取得できませんでした）", preview_text: "" };
+      const nextQ = questionsDB[(progress.currentIndex + 1) % questionsDB.length] || { preview_text: "次の記憶へ" };
 
       return (
         <div className="app-container px-6 py-10" style={{ fontSize: UX_CONFIG.baseFontSize }}>
+          {scene === -1 && <Scene_Login onLogin={handleLoginSubmit} />}
           {scene === 0 && <Scene0_Door onNext={goToScene1} />}
-          {scene === 1 && <Scene1_MyPage progress={progress} question={currentQ} onNext={() => setScene(2)} />}
+          {scene === 1 && <Scene1_MyPage progress={progress} question={currentQ} userName={user?.name} onNext={() => setScene(2)} />}
           {scene === 2 && <Scene2_PreVoice onNext={() => setScene(3)} duration={UX_CONFIG.preVoiceSeconds} />}
-          {scene === 3 && <Scene3_Recording question={currentQ} onComplete={(txt) => { setVoiceData(prev => ({...prev, transcript: txt})); setScene(4); }} />}
+          {scene === 3 && <Scene3_Recording question={currentQ} onComplete={(txt, dur) => { setVoiceData(prev => ({...prev, transcript: txt, duration: dur})); setScene(4); }} />}
           {scene === 4 && <Scene4_AIMirror transcript={voiceData.transcript} onProcessed={(data) => setVoiceData(prev => ({...prev, ...data}))} onNext={() => setScene(5)} onRetry={() => setScene(3)} />}
-          {scene === 5 && <Scene5_Meaning onNext={(tag) => { setVoiceData(prev => ({...prev, meaning: tag})); setScene(6); }} />}
-          {scene === 6 && <Scene6_Completion progress={progress} nextPreview={nextQ.preview} onTalkMore={goToNextQuestion} onBackToBookshelf={goToScene1} />}
+          {scene === 5 && <Scene5_Meaning onNext={handleSaveAnswer} />}
+          {scene === 6 && <Scene6_Completion progress={progress} nextPreview={nextQ.preview_text || nextQ.preview} onTalkMore={goToNextQuestion} onBackToBookshelf={goToScene1} />}
+        </div>
+      );
+    }
+
+    // ------------------------------------------
+    // 各シーンコンポーネント
+    // ------------------------------------------
+    function Scene_Login({ onLogin }) {
+      const [email, setEmail] = useState("");
+      const [name, setName] = useState("");
+      return (
+        <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center">
+          <p className="text-[1.1rem] text-white/90 text-narrative mb-12">この物語の持ち主を<br/>教えてください。</p>
+          <div className="w-full max-w-[280px] space-y-8 mb-12">
+            <div>
+              <p className="text-white/40 text-xs tracking-widest mb-2">お名前（ニックネーム可）</p>
+              <input type="text" className="quiet-input" value={name} onChange={e => setName(e.target.value)} placeholder="例：タカシ" />
+            </div>
+            <div>
+              <p className="text-white/40 text-xs tracking-widest mb-2">本棚の鍵（メールアドレス）</p>
+              <input type="email" className="quiet-input" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
+            </div>
+          </div>
+          <button onClick={() => onLogin(email, name)} disabled={!email || !name} className="btn-quiet w-full max-w-[280px] py-4 rounded-full tracking-widest text-[0.95rem]">
+            物語をはじめる
+          </button>
         </div>
       );
     }
@@ -184,11 +275,11 @@
       );
     }
 
-    function Scene1_MyPage({ progress, question, onNext }) {
+    function Scene1_MyPage({ progress, question, userName, onNext }) {
       return (
         <div className="h-full flex flex-col fade-enter">
           <header className="mb-8">
-            <h1 className="text-white/70 text-sm tracking-widest mb-6">〇〇さんの物語</h1>
+            <h1 className="text-white/70 text-sm tracking-widest mb-6">{userName || "あなた"}さんの物語</h1>
             <div className="space-y-2">
               <p className="text-white/60 text-xs tracking-widest">{question.chapter}</p>
               <div className="w-full h-[2px] bg-white/10 rounded-full overflow-hidden">
@@ -221,9 +312,7 @@
             
             <div className="glass-card p-6 text-center space-y-6">
               <p className="text-white/50 text-xs tracking-widest">今日の問い</p>
-              <p className="text-[1.1rem] text-narrative text-white/90 whitespace-pre-wrap">
-                {question.text}
-              </p>
+              <p className="text-[1.1rem] text-narrative text-white/90 whitespace-pre-wrap">{question.text}</p>
             </div>
           </div>
 
@@ -286,7 +375,7 @@
       const stopRec = () => {
         setIsRec(false); if(recRef.current) recRef.current.stop();
         const fullText = finalText + interimText;
-        onComplete(fullText || "（沈黙の時間が流れていました）");
+        onComplete(fullText || "（沈黙の時間が流れていました）", time); // 秒数も渡す
       };
 
       const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
@@ -320,7 +409,10 @@
       const loadingTexts = ["言葉を編んでいます...", "語りの流れを整えています...", "記憶の輪郭をたどっています..."];
       const [loadingText] = useState(loadingTexts[Math.floor(Math.random() * loadingTexts.length)]);
 
-      useEffect(() => { processVoiceData(transcript).then(res => { setData(res); onProcessed(res); setLoading(false); }); }, [transcript]);
+      useEffect(() => { 
+        // エラーでもフォールバックが返るので止まらない
+        processVoiceData(transcript).then(res => { setData(res); onProcessed(res); setLoading(false); }); 
+      }, [transcript]);
 
       if (loading) return (
         <div className="h-full flex flex-col items-center justify-center fade-enter text-white/40 tracking-widest text-sm">
@@ -346,16 +438,27 @@
     }
 
     function Scene5_Meaning({ onNext }) {
+      const [saving, setSaving] = useState(false);
       const tags = ["少し懐かしい時間", "誰かを思い出す時間", "自分を振り返る時間", "言葉にできなかった時間"];
+      
+      const handleSelect = (tag) => { setSaving(true); onNext(tag); };
+
+      if (saving) return (
+        <div className="h-full flex flex-col items-center justify-center fade-enter text-white/40 tracking-widest text-sm">
+          <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/80 animate-spin mb-4"></div>
+          ページを綴じています...
+        </div>
+      );
+
       return (
         <div className="h-full flex flex-col fade-enter">
           <div className="flex-1 flex flex-col justify-center text-center">
             <p className="text-white/80 text-[1.1rem] text-narrative mb-10">この語りは、あなたにとって<br/>どんな時間でしたか？</p>
             <div className="flex flex-col gap-4 px-4">
-              {tags.map(t => <button key={t} onClick={() => onNext(t)} className="btn-quiet py-4 rounded-xl text-[0.95rem] tracking-widest">{t}</button>)}
+              {tags.map(t => <button key={t} onClick={() => handleSelect(t)} className="btn-quiet py-4 rounded-xl text-[0.95rem] tracking-widest">{t}</button>)}
             </div>
           </div>
-          <button onClick={() => onNext("スキップ")} className="mb-6 text-white/30 text-sm tracking-widest underline underline-offset-4 text-center">スキップして保存する</button>
+          <button onClick={() => handleSelect("スキップ")} className="mb-6 text-white/30 text-sm tracking-widest underline underline-offset-4 text-center">スキップして保存する</button>
         </div>
       );
     }
@@ -370,14 +473,12 @@
 
           <div className="text-center space-y-6 text-narrative absolute bottom-28 w-full">
             <p className="text-white/90 text-[1.05rem] fade-enter-delayed" style={{'--delay-time': '0.5s'}}>この記憶は、確かに残りました</p>
-            {/* ▼ 追加された余韻と意味の接続テキスト */}
             <p className="text-white/50 text-[0.85rem] fade-enter-delayed" style={{'--delay-time': '1.5s'}}>あなたの物語に、ひとつのページが加わりました</p>
             <p className="text-white/40 text-[0.8rem] fade-enter-delayed" style={{'--delay-time': '3.0s'}}>このページは、いつか一冊の本になります</p>
             
             <div className="pt-8 fade-enter-delayed" style={{'--delay-time': '4.5s'}}>
               <p className="text-white/30 text-[0.75rem] mb-4">次の問いは、{nextPreview}</p>
               <div className="flex flex-col gap-3 px-8">
-                {/* ▼ 文言を「もう1ページ、進めてみる」へ変更 */}
                 <button onClick={onTalkMore} className="btn-quiet w-full py-3 rounded-full text-[0.9rem] tracking-widest text-white">もう1ページ、進めてみる</button>
                 <button onClick={onBackToBookshelf} className="text-white/40 text-xs tracking-widest underline mt-2">本棚に戻る</button>
               </div>
@@ -387,19 +488,11 @@
       );
     }
 
-　　　const startApp = () => { 
+    const startApp = () => { 
       const container = document.getElementById('root'); 
-      if (container) { 
-        const root = ReactDOM.createRoot(container); 
-        root.render(<App />); 
-      } 
+      if (container) { const root = ReactDOM.createRoot(container); root.render(<App />); } 
     };
-    // 画面の読み込みが既に終わっている場合の安全対策
-    if (document.readyState === 'loading') { 
-      document.addEventListener('DOMContentLoaded', startApp); 
-    } else { 
-      startApp(); 
-    }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', startApp); } else { startApp(); }
   </script>
 </body>
 </html>
