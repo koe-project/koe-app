@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koe Bookshelf (PC版 Myページ)</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Noto Serif JP', serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .fade-enter {
+      animation: fadeIn 0.8s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .btn-quiet {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.8);
+      transition: all 0.3s ease;
+    }
+    .btn-quiet:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.4s ease;
+    }
+    .glass-card:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
+    }
+    /* カスタムスクロールバー（静かなデザイン） */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    // --- ダミーデータ ---
+    const MOCK_ANSWERS = [
+      { answer_id: "A01", sequence_order: 1, chapter: "幼少期", question_text: "一番古い記憶は、どんな景色ですか？", transcript_edited: "家の前の原っぱで、弟と一緒に泥だらけになって遊んでいた記憶ですね。夕焼けがすごく赤くて、母が遠くからご飯よって呼ぶ声が聞こえて。なぜかその時の土の匂いまで覚えています。", ai_mirror_text: "夕暮れの光と土の匂いが、優しい声と共に残っています", extracted_snippet: "「夕焼けがすごく赤くて、母が遠くからご飯よって呼ぶ声が...」" },
+      { answer_id: "A02", sequence_order: 2, chapter: "幼少期", question_text: "子供の頃、夢中になっていたものは何ですか？", transcript_edited: "近所の川でずっとメダカを追いかけていました。網一つ持って、日が暮れるまで。今思えば何がそんなに楽しかったのか不思議ですけど。", ai_mirror_text: "小さな命を追いかけた、無我夢中の時間でした", extracted_snippet: "「網一つ持って、日が暮れるまで。」" },
+      { answer_id: "A03", sequence_order: 3, chapter: "学生時代", question_text: "中学生の頃、一番影響を受けた人は誰ですか？", transcript_edited: "当時の国語の先生ですね。本を読む面白さを教えてくれて。あの人がいなかったら、今の仕事には就いていなかったかもしれません。", ai_mirror_text: "言葉の扉を開いてくれた、大切な出会いがありました", extracted_snippet: "「あの人がいなかったら、今の仕事には就いていなかった」" },
+      { answer_id: "A04", sequence_order: 4, chapter: "仕事", question_text: "初めての仕事で、一番悔しかったことは？", transcript_edited: "企画書を何十回も書き直させられて、結局先輩の案が通った時です。自分の力不足を痛感して、帰り道に少し泣きましたね。", ai_mirror_text: "悔し涙の奥に、仕事への真剣な熱がありました", extracted_snippet: "「自分の力不足を痛感して、帰り道に少し泣きましたね。」" },
+      { answer_id: "A05", sequence_order: 5, chapter: "家族", question_text: "子供が生まれた日、どんな気持ちでしたか？", transcript_edited: "ただただ、この小さな命を全力で守らなきゃいけないんだなって。責任感と、言葉にならない安堵感で胸がいっぱいでした。", ai_mirror_text: "守るべき存在に出会えた、静かで強い決意の瞬間", extracted_snippet: "「ただただ、この小さな命を全力で守らなきゃいけないんだなって。」" }
+    ];
+
+    // ==========================================
+    // 1. KoeBookshelf（ルート）
+    // ==========================================
+    function KoeBookshelf() {
+      const [mode, setMode] = useState("grid"); // grid / page / finalize / control / meta
+      const [activeChapter, setActiveChapter] = useState("すべて");
+      const [selectedAnswerId, setSelectedAnswerId] = useState(null);
+
+      // ダミーのユーザー情報と進捗
+      const user = { name: "ひで" };
+      const progress = { currentIndex: MOCK_ANSWERS.length, total: 30 };
+
+      const selectedAnswer = MOCK_ANSWERS.find(a => a.answer_id === selectedAnswerId);
+
+      return (
+        <div className="h-full flex flex-col bg-[#0f172a] text-white overflow-hidden">
+          <BookshelfHeader progress={progress} userName={user.name} />
+          <div className="flex flex-1 overflow-hidden">
+            <ChapterSidebar 
+              activeChapter={activeChapter} 
+              onChange={(chapter) => {
+                setActiveChapter(chapter);
+                setMode("grid");
+              }} 
+              onFinalize={() => setMode("finalize")}
+            />
+            <div className="flex-1 overflow-y-auto relative">
+              <MainPanel 
+                mode={mode} 
+                setMode={setMode} 
+                answers={MOCK_ANSWERS}
+                activeChapter={activeChapter}
+                selectedAnswer={selectedAnswer}
+                onOpenPage={(id) => {
+                  setSelectedAnswerId(id);
+                  setMode("page");
+                }}
+                progress={progress}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 2. BookshelfHeader
+    // ==========================================
+    function BookshelfHeader({ progress, userName }) {
+      return (
+        <div className="flex justify-between items-center px-10 py-5 border-b border-white/5 bg-white/[0.01]">
+          <div>
+            <p className="text-white/50 text-xs tracking-widest mb-1">{userName}さんの物語</p>
+            <p className="text-white/80 text-sm tracking-wider">現在 {progress.currentIndex} / {progress.total} ページ</p>
+          </div>
+          <div className="flex gap-4">
+            <button className="text-white/30 hover:text-white/70 transition-colors text-sm tracking-widest">本の設定</button>
+            <button className="text-white/30 hover:text-white/70 transition-colors text-sm tracking-widest">家族を招待</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 3. ChapterSidebar
+    // ==========================================
+    function ChapterSidebar({ activeChapter, onChange, onFinalize }) {
+      const chapters = ["すべて", "幼少期", "学生時代", "仕事", "家族", "転機"];
+
+      return (
+        <div className="w-64 border-r border-white/5 p-8 flex flex-col bg-white/[0.005]">
+          <p className="text-white/30 text-xs tracking-widest mb-8">CHAPTERS</p>
+          <div className="flex-1 space-y-2">
+            {chapters.map(c => (
+              <button
+                key={c}
+                onClick={() => onChange(c)}
+                className={`block w-full text-left py-2.5 px-4 rounded-lg tracking-widest text-sm transition-all ${
+                  activeChapter === c 
+                    ? "bg-white/10 text-white/90 shadow-sm" 
+                    : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          
+          <div className="pt-8 border-t border-white/5 mt-auto">
+            <p className="text-white/30 text-[0.7rem] tracking-widest mb-4">FINISH BOOK</p>
+            <button 
+              onClick={onFinalize}
+              className="w-full text-left py-3 px-4 rounded-lg text-amber-500/80 hover:bg-amber-500/10 hover:text-amber-400 transition-all text-sm tracking-widest flex justify-between items-center"
+            >
+              本を仕上げる <span>→</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 4. MainPanel (Router)
+    // ==========================================
+    function MainPanel({ mode, setMode, answers, activeChapter, selectedAnswer, onOpenPage, progress }) {
+      const filteredAnswers = useMemo(() => {
+        if (activeChapter === "すべて") return answers;
+        return answers.filter(a => a.chapter === activeChapter);
+      }, [answers, activeChapter]);
+
+      return (
+        <div className="min-h-full fade-enter p-10 pb-20">
+          {mode === "grid" && <GridView answers={filteredAnswers} onOpen={onOpenPage} activeChapter={activeChapter} />}
+          {mode === "page" && selectedAnswer && <PageDetailView answer={selectedAnswer} onBack={() => setMode("grid")} />}
+          {mode === "finalize" && <FinalizeView progress={progress} onBack={() => setMode("grid")} />}
+          
+          {/* 今後拡張するビュー */}
+          {mode === "control" && <QuestionControlView />}
+          {mode === "meta" && <BookMetaView />}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 5. GridView（一覧）
+    // ==========================================
+    function GridView({ answers, onOpen, activeChapter }) {
+      return (
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-10">
+            <h2 className="text-2xl text-white/90 tracking-widest">{activeChapter}</h2>
+            <p className="text-white/40 text-sm mt-2 tracking-wider">{answers.length} の記憶</p>
+          </div>
+          
+          {answers.length === 0 ? (
+            <div className="py-20 text-center">
+              <p className="text-white/30 tracking-widest">まだこの章のページはありません</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {answers.map(a => (
+                <div
+                  key={a.answer_id}
+                  onClick={() => onOpen(a.answer_id)}
+                  className="glass-card p-6 rounded-xl cursor-pointer flex flex-col h-56 group relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  
+                  <div className="flex justify-between items-start mb-4">
+                    <p className="text-[0.7rem] tracking-[0.2em] font-serif text-white/40">PAGE {a.sequence_order}</p>
+                    {/* 写真有無のインジケーター（モック） */}
+                    <div className="w-2 h-2 rounded-full border border-white/20"></div>
+                  </div>
+                  
+                  <p className="text-[1.05rem] text-white/80 leading-relaxed font-serif flex-1 mt-2 group-hover:text-white transition-colors">
+                    {a.extracted_snippet || "これから語る"}
+                  </p>
+                  
+                  <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center">
+                    <p className="text-xs text-white/30 tracking-widest truncate pr-4">{a.question_text}</p>
+                    <span className="text-white/20 group-hover:text-white/50 transition-colors text-xs">→</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 6. PageDetailView（ページ詳細）
+    // ==========================================
+    function PageDetailView({ answer, onBack }) {
+      return (
+        <div className="max-w-3xl mx-auto pb-10">
+          <button 
+            onClick={onBack} 
+            className="mb-10 text-white/30 hover:text-white/70 transition-colors text-sm tracking-widest flex items-center gap-2"
+          >
+            <span>←</span> 書架に戻る
+          </button>
+
+          <div className="mb-16 text-center">
+            <p className="text-white/30 text-xs tracking-[0.3em] font-serif mb-6">PAGE {answer.sequence_order}</p>
+            <h1 className="text-xl text-white/70 tracking-widest font-serif leading-relaxed px-4">{answer.question_text}</h1>
+          </div>
+
+          <div className="mb-12 p-6 bg-white/[0.02] border-l-2 border-amber-600/50 rounded-r-lg shadow-sm">
+            <p className="text-amber-100/70 text-[0.95rem] tracking-widest italic">{answer.ai_mirror_text}</p>
+          </div>
+
+          <div className="mb-20">
+            <p className="text-white/90 text-[1.1rem] leading-[2.4] tracking-[0.08em] font-serif whitespace-pre-wrap">
+              {answer.transcript_edited}
+            </p>
+          </div>
+
+          <div className="border-t border-white/10 pt-12 flex flex-col items-center">
+            <p className="text-white/30 text-xs tracking-widest mb-6">ASSETS</p>
+            <button className="btn-quiet px-8 py-4 rounded-full text-sm tracking-widest flex items-center gap-3">
+              <span className="text-lg font-light">+</span> このページに、風景を添える
+            </button>
+            <p className="text-white/30 text-[0.7rem] mt-4 tracking-wider">※ご自身の端末から写真を追加できます</p>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 7. FinalizeView（仕上げ）
+    // ==========================================
+    function FinalizeView({ progress, onBack }) {
+      return (
+        <div className="max-w-2xl mx-auto text-center pt-10">
+           <button 
+            onClick={onBack} 
+            className="mb-16 text-white/30 hover:text-white/70 transition-colors text-sm tracking-widest mx-auto flex items-center gap-2"
+          >
+            <span>←</span> 書架に戻る
+          </button>
+
+          <p className="text-white/50 text-sm tracking-widest mb-6">PROJECT STATUS</p>
+          <p className="text-2xl text-white/90 tracking-widest font-serif mb-4">
+            現在、{progress.currentIndex}ページが<br/>編まれています
+          </p>
+          <p className="text-white/40 text-[0.9rem] leading-relaxed mb-16">
+            語られた言葉たちは、すでに一冊の本としての<br/>厚みを持ち始めています。
+          </p>
+
+          <div className="glass-card p-8 rounded-2xl mb-12 text-left space-y-6">
+            <h3 className="text-white/70 text-sm tracking-widest border-b border-white/10 pb-3">本の仕様を決める</h3>
+            <div className="flex justify-between items-center text-sm text-white/50">
+              <span>タイトル・著者名</span>
+              <span className="text-white/30">未設定</span>
+            </div>
+            <div className="flex justify-between items-center text-sm text-white/50">
+              <span>添えられた写真</span>
+              <span className="text-white/80">0 枚</span>
+            </div>
+            <div className="flex justify-between items-center text-sm text-white/50">
+              <span>公開範囲</span>
+              <span className="text-white/80">家族のみ</span>
+            </div>
+          </div>
+
+          <button className="btn-quiet bg-white/5 w-full py-5 rounded-xl tracking-widest text-[0.95rem] text-white/90 hover:bg-white/10 shadow-lg">
+            この内容で本の仕上げに進む
+          </button>
+        </div>
+      );
+    }
+
+    // --- Placeholders for future views ---
+    function QuestionControlView() { return <div className="p-8"><p>Question Control</p></div>; }
+    function BookMetaView() { return <div className="p-8"><p>Book Meta Settings</p></div>; }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<KoeBookshelf />);
+  </script>
+</body>
+</html>
