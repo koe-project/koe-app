@@ -11,15 +11,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Noto Serif JP', serif; background-color: #0f172a; color: #f8fafc; margin: 0; height: 100vh; overflow: hidden; }
-    /* ▼ 修正1: スクロール領域を正しく計算させるため、rootに高さを指定 */
     #root { height: 100%; } 
-    
     .fade-enter { animation: fadeIn 0.8s ease-out forwards; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     .btn-quiet { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.8); transition: all 0.3s ease; }
     .btn-quiet:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.2); }
     .glass-card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); transition: all 0.4s ease; }
-    .quiet-input { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 8px; padding: 12px; outline: none; width: 100%; }
+    .quiet-input { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 8px; padding: 12px; outline: none; width: 100%; transition: all 0.3s ease; }
+    .quiet-input:focus { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.3); }
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
   </style>
@@ -29,7 +28,7 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
     
-    // ▼▼▼ あなたのウェブアプリURLに書き換えてください ▼▼▼
+    // ▼▼▼ あなたのウェブアプリURL ▼▼▼
     const UX_CONFIG = { GAS_API_URL: "https://script.google.com/macros/s/AKfycbx6oo40xjPpE9gJ-8sPiV9odjdOxG89Cygc3IUXPG5Tv8klpqghXi4vGRQAwhywZeqk/exec" };
 
     const apiFetch = async (action, data = {}) => {
@@ -39,27 +38,20 @@
       return json.data;
     };
 
-    // ▼ 修正2: ブラウザのセキュリティブロックを回避する強力なURL変換
     const getDirectImageUrl = (url) => {
       if (!url) return "";
       let fileId = "";
       const matchD = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
       const matchId = url.match(/id=([a-zA-Z0-9_-]+)/);
-      
-      if (matchD) fileId = matchD[1];
-      else if (matchId) fileId = matchId[1];
-      
-      if (fileId) {
-        // サムネイルAPIを利用することで安定して画像を表示させます
-        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
-      }
+      if (matchD) fileId = matchD[1]; else if (matchId) fileId = matchId[1];
+      if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
       return url;
     };
 
     function KoeBookshelf() {
       const [isLoading, setIsLoading] = useState(true);
       const [accessError, setAccessError] = useState("");
-      const [mode, setMode] = useState("grid"); // grid, page, finalize, meta, complete
+      const [mode, setMode] = useState("grid");
       const [activeChapter, setActiveChapter] = useState("すべて");
       const [bookData, setBookData] = useState({ user: {}, progress: { currentIndex: 0, total: 30 }, pages: [] });
       const [selectedPageId, setSelectedPageId] = useState(null);
@@ -86,8 +78,8 @@
               <p className="text-white/90 text-sm font-serif">{bookData.progress.currentIndex} / {bookData.progress.total} ページ</p>
             </div>
             <div className="flex gap-8">
-              <button onClick={() => setMode("meta")} className="text-white/40 hover:text-white/80 text-[0.8rem] tracking-widest">本を整える</button>
-              <button className="text-white/40 hover:text-white/80 text-[0.8rem] tracking-widest">家族とつなぐ</button>
+              <button onClick={() => setMode("meta")} className="text-white/40 hover:text-white/80 text-[0.8rem] tracking-widest transition-colors">本を整える</button>
+              <button className="text-white/40 hover:text-white/80 text-[0.8rem] tracking-widest transition-colors">家族とつなぐ</button>
             </div>
           </header>
 
@@ -121,12 +113,13 @@
           <h2 className="text-2xl text-white/90 tracking-widest font-serif mb-10">{activeChapter}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {pages.map(p => (
-              <div key={p.sequence_order} onClick={() => p.is_answered && onOpen(p.answer_id)} className={`glass-card p-6 rounded-xl flex flex-col h-52 relative overflow-hidden transition-all ${p.is_answered ? 'cursor-pointer group' : 'opacity-40'}`}>
+              <div key={p.sequence_order} onClick={() => p.is_answered && onOpen(p.answer_id)} className={`glass-card p-6 rounded-xl flex flex-col h-52 relative overflow-hidden transition-all duration-500 ${p.is_answered ? 'cursor-pointer group hover:bg-white/[0.03]' : 'opacity-40'}`}>
                 <div className="flex justify-between items-start mb-4">
-                  <p className="text-[0.65rem] text-white/40 font-serif">PAGE {p.sequence_order}</p>
-                  <div className={`w-2 h-2 rounded-full ${p.has_photo ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" : p.is_answered ? "bg-white/40" : "border border-white/20"}`}></div>
+                  <p className="text-[0.65rem] text-white/40 font-serif tracking-[0.2em]">PAGE {p.sequence_order}</p>
+                  {/* ▼ 修正点②：オレンジのドットの発光を少し強め、記憶が宿る感覚に */}
+                  <div className={`rounded-full ${p.has_photo ? "w-2.5 h-2.5 border-2 border-[#0f172a] bg-amber-500/90 shadow-[0_0_10px_rgba(245,158,11,0.5)]" : p.is_answered ? "w-2 h-2 bg-white/40 shadow-[0_0_6px_rgba(255,255,255,0.2)]" : "w-2 h-2 border border-white/20"}`}></div>
                 </div>
-                <p className="text-[0.95rem] leading-[1.65] text-white/60 line-clamp-3 flex-1 font-serif">{p.is_answered ? p.extracted_snippet : "まだ、このページは静かなままです"}</p>
+                <p className="text-[0.95rem] leading-[1.65] text-white/60 line-clamp-3 flex-1 font-serif transition-colors group-hover:text-white/80">{p.is_answered ? p.extracted_snippet : "まだ、このページは静かなままです"}</p>
                 <p className="text-[0.75rem] text-white/40 truncate mt-4 tracking-widest">{p.question_text}</p>
               </div>
             ))}
@@ -152,17 +145,38 @@
       };
 
       return (
-        <div className="max-w-3xl mx-auto p-10 pb-24 fade-enter">
-          <button onClick={onBack} className="mb-6 text-white/30 hover:text-white/70 text-sm tracking-widest">← 書架に戻る</button>
+        <div className="max-w-3xl mx-auto p-10 pb-32 fade-enter">
+          <button onClick={onBack} className="mb-6 text-white/30 hover:text-white/70 text-sm tracking-widest transition-colors">← 書架に戻る</button>
+          
           <h1 className="text-xl text-white/70 text-center mb-10 font-serif leading-relaxed px-4">{page.question_text}</h1>
-          <div className="mb-8 p-5 bg-white/[0.02] border-l-2 border-amber-600/50 rounded-r-lg"><p className="text-amber-100/70 text-[0.95rem] italic tracking-widest">{page.ai_mirror_text}</p></div>
-          <p className="text-white/90 text-[1.05rem] leading-[2.4] font-serif whitespace-pre-wrap mb-12">{page.transcript_edited}</p>
-          <div className="border-t border-white/10 pt-10 flex flex-col items-center">
+          
+          {/* ▼ 修正点③：ミラーの存在感を「静かだけど核」になるよう少し強める */}
+          <div className="mb-10 p-6 bg-white/[0.04] border-l-2 border-amber-500/50 rounded-r-lg shadow-sm">
+            <p className="text-amber-50/90 text-[0.95rem] italic tracking-widest leading-relaxed">{page.ai_mirror_text}</p>
+          </div>
+          
+          <p className="text-white/90 text-[1.05rem] leading-[2.4] font-serif whitespace-pre-wrap mb-16">{page.transcript_edited}</p>
+          
+          <div className="border-t border-white/10 pt-12 flex flex-col items-center">
             <p className="text-white/40 text-[0.8rem] mb-6 tracking-widest text-center">この記憶にまつわる、アルバムの中の一枚を加えられます</p>
-            {isUploading ? <p className="animate-pulse text-white/40 text-sm">保存しています...</p> : (
+            {isUploading ? <p className="animate-pulse text-white/40 text-sm tracking-widest">記憶を定着させています...</p> : (
               <div className="flex flex-col items-center w-full">
-                {page.has_photo && <img src={getDirectImageUrl(page.photo_url)} className="w-full max-w-lg rounded-xl mb-6 opacity-90 border border-white/10 object-cover shadow-lg" alt="添えられた風景" />}
-                <button onClick={() => fileRef.current.click()} className="btn-quiet px-8 py-4 rounded-full text-sm tracking-widest">{page.has_photo ? "写真を変更する" : "+ 風景を添える"}</button>
+                {page.has_photo && (
+                  <div className="w-full max-w-lg relative group rounded-xl overflow-hidden border border-white/10 shadow-xl mb-8">
+                    {/* ▼ 修正点①：UIから体験に変える「MEMORY」のタグ追加 */}
+                    <div className="absolute top-4 left-4 bg-[#0f172a]/70 backdrop-blur-sm px-3 py-1.5 rounded border border-white/10 z-10 pointer-events-none">
+                      <p className="text-[0.6rem] tracking-[0.3em] text-white/80 font-serif">MEMORY</p>
+                    </div>
+                    {/* ホバー時に写真が少し沈み、変更ボタンが浮かび上がる演出 */}
+                    <img src={getDirectImageUrl(page.photo_url)} className="w-full h-auto object-cover opacity-90 transition-all duration-500 group-hover:opacity-50 group-hover:scale-[1.02]" alt="あのときの景色" />
+                    <button onClick={() => fileRef.current.click()} className="absolute inset-0 w-full h-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+                      <span className="text-white/90 text-sm tracking-widest bg-black/60 px-6 py-3 rounded-full border border-white/20 backdrop-blur-sm">写真を変更する</span>
+                    </button>
+                  </div>
+                )}
+                {!page.has_photo && (
+                  <button onClick={() => fileRef.current.click()} className="btn-quiet px-8 py-4 rounded-full text-sm tracking-widest shadow-sm">+ 風景を添える</button>
+                )}
               </div>
             )}
             <input type="file" accept="image/*" className="hidden" ref={fileRef} onChange={handleUpload} />
@@ -182,16 +196,35 @@
 
       return (
         <div className="max-w-xl mx-auto p-10 pb-20 fade-enter">
-          <h2 className="text-xl mb-10 font-serif tracking-widest text-center">本のかたちを決める</h2>
-          <div className="space-y-8">
-            <div><p className="text-xs text-white/40 mb-2 tracking-widest">本のタイトル</p><input className="quiet-input" value={meta.title} onChange={e => setMeta({...meta, title: e.target.value})} placeholder="例：私の歩んできた道" /></div>
-            <div><p className="text-xs text-white/40 mb-2 tracking-widest">著者名</p><input className="quiet-input" value={meta.author} onChange={e => setMeta({...meta, author: e.target.value})} /></div>
-            <div className="flex gap-4">
-              <div className="flex-1"><p className="text-xs text-white/40 mb-2 tracking-widest">冊子の仕様</p><select className="quiet-input text-sm" value={meta.spec} onChange={e => setMeta({...meta, spec: e.target.value})}><option value="hardcover">ハードカバー（上製本）</option><option value="softcover">ソフトカバー（並製本）</option></select></div>
-              <div className="w-24"><p className="text-xs text-white/40 mb-2 tracking-widest">冊数</p><input type="number" className="quiet-input" value={meta.quantity} onChange={e => setMeta({...meta, quantity: e.target.value})} min="1" /></div>
+          <h2 className="text-xl mb-12 font-serif tracking-widest text-center">本のかたちを決める</h2>
+          <div className="space-y-10">
+            {/* ▼ 修正点④：機械的なラベルから、感情を乗せた問いかけへ */}
+            <div>
+              <p className="text-white/60 text-[0.85rem] tracking-widest mb-3 font-serif">この物語に、名前をつけてください</p>
+              <input className="quiet-input text-[1.05rem]" value={meta.title} onChange={e => setMeta({...meta, title: e.target.value})} placeholder="例：私の歩んできた道" />
             </div>
-            <button onClick={handleSave} disabled={isSaving || !meta.title} className="btn-quiet w-full py-5 rounded-xl text-white mt-10 shadow-lg tracking-[0.2em]">{isSaving ? "保存中..." : "この内容で注文を確定する"}</button>
-            <button onClick={onBack} className="w-full text-white/30 text-sm underline mt-6 tracking-widest">まだ注文せずに戻る</button>
+            <div>
+              <p className="text-white/60 text-[0.85rem] tracking-widest mb-3 font-serif">この本の語り手</p>
+              <input className="quiet-input text-[1.05rem]" value={meta.author} onChange={e => setMeta({...meta, author: e.target.value})} />
+            </div>
+            <div className="flex gap-6 border-t border-white/10 pt-8 mt-4">
+              <div className="flex-1">
+                <p className="text-xs text-white/40 mb-3 tracking-widest">装丁</p>
+                <select className="quiet-input text-sm" value={meta.spec} onChange={e => setMeta({...meta, spec: e.target.value})}>
+                  <option value="hardcover">ハードカバー（上製本）</option>
+                  <option value="softcover">ソフトカバー（並製本）</option>
+                </select>
+              </div>
+              <div className="w-24">
+                <p className="text-xs text-white/40 mb-3 tracking-widest">冊数</p>
+                <input type="number" className="quiet-input text-center" value={meta.quantity} onChange={e => setMeta({...meta, quantity: e.target.value})} min="1" />
+              </div>
+            </div>
+            
+            <div className="pt-4">
+              <button onClick={handleSave} disabled={isSaving || !meta.title} className="btn-quiet w-full py-5 rounded-xl text-white shadow-lg tracking-[0.2em]">{isSaving ? "保存中..." : "この内容で注文を確定する"}</button>
+              <button onClick={onBack} className="w-full text-white/30 hover:text-white/60 transition-colors text-sm underline underline-offset-4 mt-6 tracking-widest block text-center">まだ注文せずに戻る</button>
+            </div>
           </div>
         </div>
       );
@@ -203,7 +236,7 @@
           <h2 className="text-2xl mb-4 font-serif tracking-widest leading-loose">現在、{progress.currentIndex}ページが<br/>編まれています</h2>
           <p className="text-white/40 text-sm mb-16 tracking-widest">語られた言葉が、一冊の本になるだけの量まで積み重なっています。</p>
           <button onClick={onProceed} className="btn-quiet w-full py-6 rounded-xl text-white text-lg shadow-xl tracking-[0.3em]">本の仕上げに進む</button>
-          <button onClick={onBack} className="mt-10 text-white/30 underline text-sm tracking-widest">書架に戻り、もう少し語る</button>
+          <button onClick={onBack} className="mt-10 text-white/30 hover:text-white/60 transition-colors underline underline-offset-4 text-sm tracking-widest">書架に戻り、もう少し語る</button>
         </div>
       );
     }
