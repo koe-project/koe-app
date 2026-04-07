@@ -24,9 +24,9 @@
     
     .app-container { 
       display: flex; flex-direction: column; height: 100%; max-width: 600px; margin: 0 auto; position: relative; 
-      /* ノッチやアドレスバーに絶対被らないように、強固な安全マージンを確保 */
-      padding-top: calc(env(safe-area-inset-top, 0px) + 60px);
-      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 40px);
+      box-sizing: border-box;
+      padding-top: calc(env(safe-area-inset-top) + 2rem);
+      padding-bottom: calc(env(safe-area-inset-bottom) + 2rem);
       padding-left: 24px; padding-right: 24px;
     }
 
@@ -50,13 +50,10 @@
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef } = React;
 
-    // ==========================================
-    // ⚙️ API設定
-    // ==========================================
+    // ▼▼▼ あなたのウェブアプリURLに書き換えてください ▼▼▼
     const UX_CONFIG = {
       fadeSpeed: "1.2s", baseFontSize: "1rem", lineHeight: "2.4", letterSpacing: "0.08em",
-      // ▼▼▼ あなたのGASウェブアプリURLに書き換えてください ▼▼▼
-      GAS_API_URL: "https://script.google.com/macros/s/AKfycbwHBZuFB-S41XzUzo-B5iT98NTU3_MpDuBRc1dcQAbyz2wxGTZv7lyAlSr-tQrFfVJf/exec"
+      GAS_API_URL: "https://script.google.com/macros/s/AKfycbzTdIahyO_f_PF55TsaKkmWnV37tl1q77lv0L5SRkVCzvAOL4RDgjFNb6gO08O-GwtY/exec"
     };
 
     document.documentElement.style.setProperty('--fade-speed', UX_CONFIG.fadeSpeed);
@@ -95,13 +92,27 @@
             const storedName = localStorage.getItem('koe_user_name');
             const lastSnippet = localStorage.getItem('koe_last_snippet') || "";
 
+            // ▼ URLパラメータから sequence を取得（本棚からのジャンプ用）
+            const urlParams = new URLSearchParams(window.location.search);
+            const forcedSequence = parseInt(urlParams.get("sequence"), 10);
+
             if (storedEmail) {
               const userData = await apiFetch('upsertUser', { userData: { email: storedEmail, name: storedName } });
               setUser({ ...userData, email: storedEmail, name: storedName });
-              // ▼ Myページ連携用：user_idを保存
               localStorage.setItem('koe_user_id', userData.user_id);
-              setProgress(p => ({ ...p, currentIndex: (userData.current_sequence_order || 1) - 1, lastSnippet }));
-              checkDoorTransition();
+              
+              // 指定があればその問いへ、なければ通常の進捗へ
+              const targetIndex = (forcedSequence && forcedSequence > 0 && forcedSequence <= qList.length) 
+                                  ? forcedSequence - 1 
+                                  : (userData.current_sequence_order || 1) - 1;
+
+              setProgress(p => ({ ...p, currentIndex: targetIndex, lastSnippet }));
+              
+              if (forcedSequence) {
+                setScene(1); // 直接問い画面へ
+              } else {
+                checkDoorTransition();
+              }
             } else { setScene(-1); }
           } catch (e) { alert("初期化エラー。API設定を確認してください。"); } 
           finally { setIsInitializing(false); }
@@ -124,7 +135,6 @@
           const userData = await apiFetch('upsertUser', { userData: { email, name } });
           setUser({ ...userData, email, name });
           localStorage.setItem('koe_user_email', email); localStorage.setItem('koe_user_name', name);
-          // ▼ Myページ連携用：user_idを保存
           localStorage.setItem('koe_user_id', userData.user_id);
           setProgress(p => ({ ...p, currentIndex: (userData.current_sequence_order || 1) - 1 }));
           
