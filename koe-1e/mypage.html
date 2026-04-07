@@ -60,7 +60,7 @@
     const { useState, useEffect, useMemo } = React;
 
     // ▼▼▼ あなたのGASウェブアプリURLに書き換えてください ▼▼▼
-    const UX_CONFIG = { GAS_API_URL: "https://script.google.com/macros/s/AKfycbwqOWIjPH3HfVLQIYSO-Xu7G-bT_oGNgGJnT-zBDBhT9hfWIJ9Yr7u-lAcBR5nFMNqT/exec" };
+    const UX_CONFIG = { GAS_API_URL: "https://script.google.com/macros/s/AKfycbybJnr8G1ZwAsn7fJmvUDQYU5hSSS1doJcSbRAoznMVl87UQ2oJWmMLEeZBwqz9_TKS/exec" };
     
     const apiFetch = async (action, data = {}) => {
       const res = await fetch(UX_CONFIG.GAS_API_URL, { method: 'POST', body: JSON.stringify({ action, ...data }) });
