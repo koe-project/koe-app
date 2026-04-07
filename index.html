@@ -1,56 +1,48 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Koe - 声で綴る一ヶ月</title>
-  
-  <script>
-    window.onerror = function(message, source, lineno, colno, error) {
-      console.error("Global Error:", error || message);
-    };
-  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Koe-1E 最終統合版</title>
   
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
 
   <style>
+    /* iOS Safariの画面押し上げバグを完全に封じる fixed ハック */
     body { 
-      font-family: 'Noto Sans JP', sans-serif; 
-      margin: 0; padding: 0; 
-      background: linear-gradient(180deg, #1e293b 0%, #334155 35%, #475569 65%, #d97706 100%);
-      height: 100vh; color: white; -webkit-font-smoothing: antialiased; overflow: hidden;
+      font-family: 'Noto Serif JP', serif; margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; 
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      overscroll-behavior: none; -webkit-font-smoothing: antialiased; transition: background-color 2s ease; 
     }
-    .font-serif { font-family: 'Noto Serif JP', serif; }
-    .font-mono { font-family: monospace; }
-    .app-container { display: flex; flex-direction: column; height: 100vh; height: 100dvh; max-width: 600px; margin: 0 auto; position: relative; }
-    .text-shadow-premium { text-shadow: 0 2px 15px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6); }
-    .btn-glass {
-      background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
-      border: 1px solid rgba(255, 255, 255, 0.3); color: white; transition: all 0.4s ease; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    }
-    .btn-glass:active:not(:disabled) { transform: scale(0.96); background: rgba(255, 255, 255, 0.3); }
-    .btn-glass:disabled { opacity: 0.6; cursor: not-allowed; }
-    .fade-in { animation: fadeInEffect 1.2s ease-out forwards; }
-    @keyframes fadeInEffect { from { opacity: 0; } to { opacity: 1; } }
-    .loader-spin { animation: spin 1s linear infinite; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    body.is-recording { background-color: #15203b; }
     
-    .step-tab { flex: 1; padding: 12px 0; font-size: 0.9rem; text-align: center; border-bottom: 2px solid transparent; color: rgba(255,255,255,0.3); transition: all 0.3s ease; font-weight: 500; }
-    .step-tab.active { color: white; border-bottom-color: white; font-weight: bold; }
+    #root { height: 100%; width: 100%; overflow: hidden; }
+    
+    .app-container { 
+      display: flex; flex-direction: column; height: 100%; max-width: 600px; margin: 0 auto; position: relative; 
+      box-sizing: border-box;
+      padding-top: calc(env(safe-area-inset-top) + 2rem);
+      padding-bottom: calc(env(safe-area-inset-bottom) + 2rem);
+      padding-left: 24px; padding-right: 24px;
+    }
 
-    .custom-select {
-      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 8px; padding: 2px 8px; color: white; outline: none; cursor: pointer;
-    }
-    .custom-select option { color: black; }
+    .fade-enter { animation: fadeIn var(--fade-speed) ease-out forwards; }
+    .fade-enter-fast { animation: fadeIn 0.6s ease-out forwards; }
+    .fade-enter-delayed { opacity: 0; animation: fadeIn var(--fade-speed) ease-out forwards; animation-delay: var(--delay-time); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+    .btn-quiet { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.8); transition: all 0.4s ease; backdrop-filter: blur(10px); }
+    .btn-quiet:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.1); }
+    .btn-quiet:disabled { opacity: 0.5; pointer-events: none; }
+    .text-narrative { line-height: var(--line-height); letter-spacing: var(--letter-spacing); }
+    .glass-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; }
+    input.quiet-input { background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.2); color: white; width: 100%; padding: 8px 0; outline: none; text-align: center; border-radius: 0; transition: border-color 0.3s; }
+    input.quiet-input:focus { border-bottom-color: rgba(255,255,255,0.6); }
+    audio { max-width: 100%; }
   </style>
 </head>
 <body>
@@ -58,579 +50,202 @@
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef } = React;
 
-    // ==========================================
-    // ★ ここにGASでデプロイしたウェブアプリのURLを貼り付けます
-    // ==========================================
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbx5ezIitjgUjqxuLZVk6RoYp2zY8RLimJp0qk5vrxbLC-qB4o56-796M81dUwXOSpJO/exec";
+    // ▼▼▼ あなたのウェブアプリURLに書き換えてください ▼▼▼
+    const UX_CONFIG = {
+      fadeSpeed: "1.2s", baseFontSize: "1rem", lineHeight: "2.4", letterSpacing: "0.08em",
+      GAS_API_URL: "https://script.google.com/macros/s/AKfycbzTdIahyO_f_PF55TsaKkmWnV37tl1q77lv0L5SRkVCzvAOL4RDgjFNb6gO08O-GwtY/exec"
+    };
 
-    const callGasApi = async (action, payload) => {
-      if (!GAS_API_URL || GAS_API_URL.includes("ここに")) {
-        console.warn("GAS_API_URLが設定されていないため、デモモードで動作します。");
-        return new Promise((resolve) => {
-          setTimeout(() => {
-            if (action === 'generateSteps') {
-              resolve({
-                success: true,
-                data: {
-                  step1: "【デモモード】\n" + (payload.transcript || "（音声が入力されませんでした）") + "、ですね。",
-                  step2: "【デモモード】\n本番環境でGASのURLを設定すると、ここにAIによる美しい整形テキストが表示されます。",
-                  tags: ["家族", "思い出"], era: "20代", emotion: "穏やか"
-                }
-              });
-            } else if (action === 'saveAnswer') { resolve({ success: true }); } 
-            else { resolve({ success: false, error: 'Unknown action' }); }
-          }, 1500);
-        });
-      }
-      
-      const response = await fetch(GAS_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: action, ...payload })
+    document.documentElement.style.setProperty('--fade-speed', UX_CONFIG.fadeSpeed);
+    document.documentElement.style.setProperty('--line-height', UX_CONFIG.lineHeight);
+    document.documentElement.style.setProperty('--letter-spacing', UX_CONFIG.letterSpacing);
+
+    const apiFetch = async (action, data = {}) => {
+      const res = await fetch(UX_CONFIG.GAS_API_URL, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action, ...data })
       });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      return json.data;
     };
 
     // ==========================================
-    // ▼▼▼ コンテンツデータ ▼▼▼
-    // ==========================================
-    const CONTENT = {
-      test: {
-        theme: "サウンドチェック",
-        questions: [
-          { text: "あなたの声が届いているか確認しましょう。\n今日の天気はどうですか？", hint: "💡天候や気温、快適さなど、感じたまま話してみて" }
-        ]
-      },
-      weeks: [
-        { 
-          number: 1, title: "Week 1", theme: "思い出すって、悪くない", 
-          questions: [ 
-            { text: "人生で一番おいしかった旅行のご飯は何でしたか？\nその時の場面も教えてください。", hint: "💡まずは一つだけ。3分ほど思い出してみましょう。" }, 
-            { text: "子供の頃、よくやっていた遊びや、よく行っていた場所はどこでしたか？" }, 
-            { text: "振り返ると、楽しかったなと思える時期はいつ頃ですか？" }, 
-            { text: "子供の頃に住んでいた家について、どんな思い出がありますか？" }, 
-            { text: "昔よく聴いていた音楽や、印象に残っている曲はありますか？" }, 
-            { text: "昔は当たり前だったけれど、今は少し懐かしく感じる習慣はありますか？" } 
-          ] 
-        },
-        { 
-          number: 2, title: "Week 2", theme: "頑張ってきた時間を、言葉にする", 
-          questions: [ 
-            { text: "これまでの人生で、一番大変だった時期はいつ頃でしたか？\nその頃のことを、少し思い出せる範囲で教えてください。" }, 
-            { text: "その「大変だった時期」を思い出すと、当時の自分は、どんな気持ちで日々を過ごしていたと思いますか？" }, 
-            { text: "それでも「大変だった時期」を乗り越えられた理由は何だったと思いますか？" }, 
-            { text: "仕事や役割を続ける中で、大事にしてきた考え方や癖はありますか？" }, 
-            { text: "あまり言葉にしてこなかったけれど、今振り返ると「自分なりに頑張っていたな」と思うことはありますか？" }, 
-            { text: "これまでの人生で、「よくやっていたな」と思える頃の自分に、今ならどんな言葉をかけてあげたいですか？" } 
-          ] 
-        },
-        { 
-          number: 3, title: "Week 3", theme: "言わなかったことに、触れてみる", 
-          questions: [ 
-            { text: "家族との思い出で、今でもよく覚えている場面はありますか？" }, 
-            { text: "ご自身の親について、子供たちにあまり話してこなかった思い出はありますか？" }, 
-            { text: "子供が生まれた時のこと、\n正直どんな気持ちでしたか？" }, 
-            { text: "家族に、これまで言葉にしてこなかった想いはありますか？" }, 
-            { text: "今だから言える、家族への感謝や本音があれば教えてください。" }, 
-            { text: "今振り返ってみて、「これでよかった」と思える家族との関わり方はありますか？" } 
-          ] 
-        },
-        { 
-          number: 4, title: "Week 4", theme: "未来へ、手渡す", 
-          questions: [ 
-            { text: "人生で「これは大事にしてきた」と言えるものは何ですか？" }, 
-            { text: "振り返ると、「あの選択はよくやったな」と思えることはありますか？" }, 
-            { text: "昔は「失敗した」とか「恥ずかしい」と思っていたけれど、今振り返ると、少し笑って話せる出来事はありますか？" }, 
-            { text: "子供たちに、今すぐ理解されなくてもいいから、いつか伝わってほしいことは何ですか？" }, 
-            { text: "家族が困ったとき、思い出してほしい自分の姿はありますか？" }, 
-            { text: "いつか家族がこの言葉を読むとしたら、そのとき、どんな気持ちでいてくれたら嬉しいですか？" } 
-          ] 
-        },
-        { 
-          number: 5, title: "", theme: "この時間を閉じる前に", 
-          questions: [ { text: "語りきれなかったことがあれば、自由にお話しください。\nどんなテーマでも、今の気持ちのままに。" } ] 
-        }
-      ]
-    };
-
-    const CustomIcon = ({ name, size = 24, className = "" }) => {
-      const paths = {
-        'mic': <><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" x2="12" y1="19" y2="22"/></>,
-        'square': <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>,
-        'play': <polygon points="5 3 19 12 5 21 5 3"/>,
-        'pause': <><rect width="4" height="16" x="6" y="4"/><rect width="4" height="16" x="14" y="4"/></>,
-        'chevron-down': <path d="m6 9 6 6 6-6"/>,
-        'loader-2': <path d="M21 12a9 9 0 1 1-6.219-8.56"/>,
-        'check': <path d="M20 6 9 17l-5-5"/>,
-        'alert-circle': <><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></>,
-        'tag': <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />,
-        'pencil': <><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></>
-      };
-      return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{paths[name] || null}</svg>;
-    };
-
-    // ==========================================
-    // ▼▼▼ メインAppコンポーネント ▼▼▼
+    // 🎬 メインアプリ
     // ==========================================
     function App() {
-      const [view, setView] = useState('top'); 
-      const [weekIdx, setWeekIdx] = useState(0); // -1 はテストモード
-      const [qIndex, setQIndex] = useState(0); 
-      const [currentData, setCurrentData] = useState(null); 
-
-      const handleNextQuestion = () => {
-        let nq = qIndex + 1; let nw = weekIdx;
-        if (nq >= CONTENT.weeks[nw].questions.length) { nq = 0; nw = (nw + 1) % CONTENT.weeks.length; }
-        setWeekIdx(nw); setQIndex(nq);
-      };
-
-      const handleJump = (w, q) => { setWeekIdx(w); setQIndex(q); };
-
-      const handleSave = (ansData, audioBase64, callback) => {
-        const payload = { data: { ...ansData, audioBase64: audioBase64, questionId: weekIdx < 4 ? `Week ${weekIdx + 1}-${qIndex + 1}` : `Final-${qIndex + 1}`, weekNumber: weekIdx + 1 } };
-        const onComplete = () => { if (weekIdx === 4) setView('epilogue'); else setView('thank_you'); if (callback) callback(); };
-
-        callGasApi('saveAnswer', payload).then(res => {
-          if (res.success) onComplete();
-          else { alert("保存に失敗しました: " + res.error); if(callback) callback(); }
-        }).catch(err => {
-          alert("通信エラーが発生しました。"); if(callback) callback();
-        });
-      };
-
-      return (
-        <div className="app-container font-serif">
-          {view === 'top' && <TopView onNext={() => setView('intro')} />}
-          
-          {view === 'intro' && (
-            <IntroView 
-              onStartTest={() => { setWeekIdx(-1); setQIndex(0); setView('question_recording'); }} 
-              onStartReal={() => { setWeekIdx(0); setQIndex(0); setView('question_recording'); }} 
-            />
-          )}
-
-          {view === 'question_recording' && (
-            <QuestionRecordingView 
-              weekIdx={weekIdx} 
-              qIndex={qIndex} 
-              onJump={handleJump} 
-              onAnother={handleNextQuestion} 
-              onComplete={(recordingData) => { setCurrentData(recordingData); setView('review'); }} 
-              onFinishSpeak={() => setView('epilogue')} 
-            />
-          )}
-
-          {view === 'review' && (
-            <ReviewView 
-              data={currentData} 
-              isTestMode={weekIdx === -1} 
-              onTestComplete={() => { setWeekIdx(0); setQIndex(0); setView('question_recording'); }} 
-              onBack={() => setView('question_recording')} 
-              onSave={handleSave} 
-            />
-          )}
-          
-          {view === 'thank_you' && <ThankYouView onFinish={() => { setWeekIdx(0); setQIndex(0); setView('top'); }} onContinue={() => { handleNextQuestion(); setView('question_recording'); }} />}
-          {view === 'epilogue' && <EpilogueView onHome={() => { setWeekIdx(0); setQIndex(0); setView('top'); }} />}
-        </div>
-      );
-    }
-
-    // ==========================================
-    // ▼▼▼ トップ画面 ▼▼▼
-    // ==========================================
-    function TopView({ onNext }) {
-      return (
-        <div className="h-full w-full flex flex-col justify-between items-center py-20 px-10 fade-in">
-          <div className="flex flex-col items-center pt-10 w-full max-w-[300px]">
-            <h1 className="text-8xl tracking-[0.1em] text-white text-shadow-premium lowercase font-serif">koe</h1>
-            <p className="text-white font-serif tracking-[0.15em] text-[1.1rem] text-shadow-premium leading-relaxed text-center mt-6">1ヶ月の回想体験。<br />語るだけ。残る。</p>
-            <div className="h-px w-full bg-gradient-to-r from-transparent via-white/40 to-transparent mt-6"></div>
-          </div>
-          <button onClick={onNext} className="animate-bounce flex flex-col items-center gap-2 text-white/50 hover:text-white transition-all"><CustomIcon name="chevron-down" size={40} /></button>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // ▼▼▼ イントロ画面（分岐ボタン付き） ▼▼▼
-    // ==========================================
-    function IntroView({ onStartTest, onStartReal }) {
-      const [showMenu, setShowMenu] = useState(false);
-
-      return (
-        <div className="h-full w-full flex flex-col justify-between items-center py-16 px-10 fade-in text-center">
-          <div className="space-y-10 flex-1 flex flex-col justify-center text-shadow-premium">
-            <p className="text-[1.1rem]">ここは、安心して語っていい場。</p>
-            <p className="text-[1.1rem]">うまく話さなくていい。<br />まとまっていなくていい。</p>
-            <p className="text-[1.1rem]">誰かに向けて語ってもいいし、<br />まだ誰も思い浮かばなくても大丈夫。</p>
-            <p className="text-[1.1rem]">残すか、渡すかは、<br />今は決めなくて大丈夫。</p>
-          </div>
-          
-          <div className="w-full max-w-xs pb-10 flex flex-col items-center justify-end h-32">
-            {!showMenu ? (
-              <button onClick={() => setShowMenu(true)} className="btn-glass w-full py-6 rounded-full text-[1.2rem] tracking-[0.3em] text-shadow-premium font-serif fade-in">はじめてみる</button>
-            ) : (
-              <div className="w-full flex flex-col gap-5 fade-in">
-                <button onClick={onStartTest} className="btn-glass w-full py-5 rounded-full text-[1.05rem] shadow-xl font-serif bg-white/20">マイクのテストをしてみる</button>
-                <button onClick={onStartReal} className="w-full py-2 text-white/50 text-[0.95rem] hover:text-white transition-all underline underline-offset-4 font-serif">さっそく問いに進む</button>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // ▼▼▼ 統合された「質問＆録音」画面 ▼▼▼
-    // ==========================================
-    function QuestionRecordingView({ weekIdx, qIndex, onJump, onAnother, onComplete, onFinishSpeak }) {
-      const isTestMode = weekIdx === -1;
-      const currentWeek = isTestMode ? CONTENT.test : CONTENT.weeks[weekIdx];
-      const currentQuestion = currentWeek.questions[qIndex];
-
-      const [status, setStatus] = useState('idle'); // idle, counting, recording, paused, error
-      const [countdown, setCountdown] = useState(3);
-      const [elapsed, setElapsed] = useState(0);
-      const [errorMsg, setErrorMsg] = useState(null);
-
-      const transcriptRef = useRef(""); const interimRef = useRef("");
-      const mediaRecorderRef = useRef(null); const chunksRef = useRef([]); const recognitionRef = useRef(null);
-
-      const MAX_RECORDING_SECONDS = 900; // 15分間に延長
-
-      const getSupportedMimeType = () => { const types = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav']; for (const type of types) { if (MediaRecorder.isTypeSupported(type)) return type; } return ''; };
-
-      // ▼ 時間のフォーマット関数 (例: 01:23)
-      const formatTime = (seconds) => {
-        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const s = (seconds % 60).toString().padStart(2, '0');
-        return `${m}:${s}`;
-      };
-
-      // ▼ 極めて控えめな電子音を鳴らす
-      const playBeep = (isStart = false) => {
-        try {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          if (!AudioContext) return;
-          const ctx = new AudioContext();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          
-          osc.type = 'sine';
-          if (isStart) {
-            osc.frequency.setValueAtTime(880, ctx.currentTime);
-            gain.gain.setValueAtTime(0, ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.015, ctx.currentTime + 0.05); // 音量を極小に
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.8);
-          } else {
-            osc.frequency.setValueAtTime(440, ctx.currentTime);
-            gain.gain.setValueAtTime(0, ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.015, ctx.currentTime + 0.05); // 音量を極小に
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.5);
-          }
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-        } catch(e) { console.error("Audio beep error:", e); }
-      };
-
-      useEffect(() => { 
-        if (status === 'counting') { 
-          if (countdown > 0) {
-            playBeep(false);
-            setTimeout(() => setCountdown(countdown - 1), 1000); 
-          } else { 
-            playBeep(true);
-            startRec(); 
-          } 
-        } 
-      }, [status, countdown]);
-
-      useEffect(() => { 
-        let timer; 
-        if (status === 'recording' && elapsed < MAX_RECORDING_SECONDS) {
-          timer = setInterval(() => setElapsed(e => e + 1), 1000); 
-        } else if (elapsed >= MAX_RECORDING_SECONDS && status === 'recording') {
-          stopRec(); // 15分到達で自動終了
-        }
-        return () => clearInterval(timer); 
-      }, [status, elapsed]);
-
-      const startRec = async () => {
-        try {
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("NOT_SUPPORTED");
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mimeType = getSupportedMimeType();
-          const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-          chunksRef.current = [];
-          recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-          recorder.onstop = () => {
-            const finalTranscript = (transcriptRef.current + " " + interimRef.current).trim();
-            const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = () => {
-              onComplete({ transcriptText: finalTranscript, audioBase64: reader.result.split(',')[1], fullAudioDataUrl: reader.result });
-              stream.getTracks().forEach(t => t.stop());
-            };
-          };
-          // タイムスライスを指定して定期的にondataavailableを発火させる
-          recorder.start(200); mediaRecorderRef.current = recorder; setStatus('recording');
-          const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-          if (SpeechRec) {
-            const rec = new SpeechRec(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true;
-            rec.onresult = e => {
-              let final = ""; let interim = "";
-              for (let i = e.resultIndex; i < e.results.length; ++i) { if (e.results[i].isFinal) final += e.results[i][0].transcript; else interim += e.results[i][0].transcript; }
-              if (final) transcriptRef.current += final; interimRef.current = interim;
-            };
-            rec.start(); recognitionRef.current = rec;
-          }
-        } catch (e) { 
-          setStatus('error');
-          if (e.message === "NOT_SUPPORTED") setErrorMsg("この環境ではマイク機能がサポートされていません。"); else setErrorMsg("マイクの起動に失敗しました。アクセス許可をご確認ください。");
-        }
-      };
-
-      const stopRec = () => { if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){} setTimeout(() => { if (mediaRecorderRef.current) mediaRecorderRef.current.stop(); }, 1200); };
-
-      return (
-        <div className="h-full w-full flex flex-col px-8 py-12 fade-in relative">
-          
-          {/* ▼ オーバーレイ（カウントダウン） ▼ */}
-          {status === 'counting' && (
-            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center fade-in">
-              <span key={countdown} className="font-serif text-white text-[10rem] opacity-90 drop-shadow-[0_0_40px_rgba(255,255,255,0.4)] animate-pulse">{countdown}</span>
-            </div>
-          )}
-
-          {/* ▼ 【上部】ステータス・時間表示領域 ▼ */}
-          <header className="mb-6 text-center font-serif flex flex-col items-center justify-center relative z-10 min-h-[60px]">
-            {status === 'idle' ? (
-              <div className="flex flex-col items-center gap-2 fade-in">
-                {!isTestMode && (
-                  <select className="custom-select font-serif text-[0.9rem] tracking-[0.2em]" value={`${weekIdx}-${qIndex}`} onChange={(e) => { const [w, q] = e.target.value.split('-').map(Number); onJump(w, q); }}>
-                    {CONTENT.weeks.map((w, wi) => w.questions.map((_, qi) => <option key={`${wi}-${qi}`} value={`${wi}-${qi}`}>{wi < 4 ? `Week ${wi + 1}-${qi + 1}` : `閉じる前に`}</option>))}
-                  </select>
-                )}
-                <h2 className="text-[1.2rem] text-white/50 mt-2 font-normal">{currentWeek.theme}</h2>
-              </div>
-            ) : (status === 'recording' || status === 'paused') ? (
-               <div className="flex items-center gap-3 bg-white/5 px-5 py-2 rounded-full border border-white/10 fade-in">
-                 <div className={`w-2 h-2 rounded-full ${status === 'recording' ? 'bg-red-500 animate-pulse' : 'bg-white/30'}`}></div>
-                 <span className="text-white/40 text-[0.9rem] tracking-widest font-mono">{formatTime(elapsed)} / 15:00</span>
-               </div>
-            ) : null}
-          </header>
-
-          <div className="flex-1 flex flex-col items-center justify-between space-y-6">
-            
-            {/* ▼ 【中央】質問カード領域（録音中もここに留まる） ▼ */}
-            <div className="card-stack w-full relative min-h-[220px] flex-shrink-0">
-              <div className="absolute inset-0 bg-white/5 translate-y-6 scale-95 opacity-10 rounded-[2.5rem]"></div>
-              <div className="absolute inset-0 bg-white/10 translate-y-3 scale-[0.98] opacity-20 rounded-[2.5rem]"></div>
-              <div className="absolute inset-0 bg-white/15 backdrop-blur-lg p-8 flex flex-col items-center justify-center text-center border border-white/5 shadow-2xl rounded-[2.5rem] overflow-hidden gap-4 z-10 transition-all duration-700">
-                <div className="w-full">
-                  <p className="text-white font-serif leading-relaxed whitespace-pre-wrap text-shadow-premium text-[1.4rem]">{currentQuestion.text}</p>
-                  {currentQuestion.hint && (
-                    <p className="text-white/60 font-serif text-[0.85rem] mt-5 leading-relaxed">{currentQuestion.hint}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* ▼ 【下部】ボトムコントロール領域 ▼ */}
-            <div className="flex flex-col items-center justify-center w-full relative h-32">
-              {status === 'idle' ? (
-                <div className="flex flex-col items-center gap-8 w-full fade-in">
-                  <button onClick={() => { setCountdown(3); setStatus('counting'); }} className="btn-glass w-full max-w-[280px] py-5 rounded-full text-[1.1rem] tracking-[0.2em] shadow-xl font-serif flex items-center justify-center gap-3">
-                    <div className="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
-                    録音をはじめる
-                  </button>
-                  <div className="flex gap-6 h-6">
-                    {!isTestMode && <button onClick={onAnother} className="text-white/40 text-[0.85rem] underline underline-offset-4 hover:text-white/70 transition-all font-serif">別の質問にする</button>}
-                    {!isTestMode && weekIdx === 4 && <button onClick={onFinishSpeak} className="text-white/40 text-[0.85rem] underline underline-offset-4 hover:text-white/70 transition-all font-serif">語りを終える</button>}
-                  </div>
-                </div>
-              ) : status === 'error' ? (
-                <div className="text-center space-y-6 fade-in">
-                  <CustomIcon name="alert-circle" size={40} className="text-red-400 mx-auto" />
-                  <p className="text-red-200 text-sm leading-relaxed">{errorMsg}</p>
-                  <button onClick={() => setStatus('idle')} className="btn-glass px-6 py-2 rounded-full text-sm">戻る</button>
-                </div>
-              ) : (status === 'recording' || status === 'paused') ? (
-                <div className="flex gap-8 items-center z-10 fade-in">
-                  <button onClick={stopRec} className="w-16 h-16 rounded-full bg-white text-stone-800 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-all"><CustomIcon name="square" size={20} /><span className="text-[0.65rem] font-bold mt-1 font-serif">終了</span></button>
-                  <button onClick={() => { if(status === 'recording') { setStatus('paused'); mediaRecorderRef.current.pause(); } else { setStatus('recording'); mediaRecorderRef.current.resume(); } }} className="w-16 h-16 rounded-full bg-white/10 border border-white/20 text-white flex flex-col items-center justify-center active:scale-95 transition-all">
-                    <CustomIcon name={status === 'recording' ? "pause" : "play"} size={20} /><span className="text-[0.65rem] font-bold mt-1 font-serif">{status === 'recording' ? "一時停止" : "再開"}</span>
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // ▼▼▼ レビュー画面（文章整形＆編集機能） ▼▼▼
-    // ==========================================
-    function ReviewView({ data, isTestMode, onTestComplete, onBack, onSave }) {
-      const [currentStep, setCurrentStep] = useState(1); 
-      const [steps, setSteps] = useState({ step1: "", step2: "", tags: [], era: "", emotion: "" });
-      const [loading, setLoading] = useState(true);
-      const [isSaving, setIsSaving] = useState(false);
-      const [isPlaying, setIsPlaying] = useState(false);
-      const audioObj = useRef(null);
-
-      const [isEditing, setIsEditing] = useState(false);
-      const [editTempText, setEditTempText] = useState("");
+      const [isInitializing, setIsInitializing] = useState(true);
+      const [scene, setScene] = useState(-2); 
+      
+      const [user, setUser] = useState(null);
+      const [questionsDB, setQuestionsDB] = useState([]);
+      const [progress, setProgress] = useState({ currentIndex: 0, total: 30, lastSnippet: "" });
+      const [voiceData, setVoiceData] = useState({ duration: 0, transcript: "", audioUrl: null, hasAudio: false, audioBlob: null, editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" });
 
       useEffect(() => {
-        const transcript = (data.transcriptText || "").trim();
-        callGasApi('generateSteps', { transcript: transcript, audioBase64: data.audioBase64 })
-          .then(res => {
-            if (res.success) {
-              try {
-                const parsed = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-                if (parsed.error) throw new Error(parsed.error);
-                setSteps({ step1: parsed.step1 || "", step2: parsed.step2 || "", tags: parsed.tags || [], era: parsed.era || "", emotion: parsed.emotion || "" });
-              } catch(e) { setSteps({ step1: res.data, step2: "", tags: [], era: "", emotion: "" }); }
-            } else { throw new Error(res.error); }
-            setLoading(false);
-          })
-          .catch(err => { setSteps({ step1: "(エラーが発生しました。設定を見直してください)", step2: "", tags: [], era: "", emotion: "" }); setLoading(false); });
-      }, [data]);
-
-      const togglePlay = () => {
-        if (isPlaying) { if (audioObj.current) { audioObj.current.pause(); audioObj.current.currentTime = 0; } setIsPlaying(false); } 
-        else {
+        const initApp = async () => {
           try {
-            const player = new Audio(); player.src = data.fullAudioDataUrl; player.onended = () => setIsPlaying(false);
-            audioObj.current = player;
-            player.play().then(() => setIsPlaying(true)).catch(e => console.error(e));
-          } catch(e) {}
-        }
+            const qList = await apiFetch('getQuestions');
+            setQuestionsDB(qList);
+            setProgress(p => ({ ...p, total: qList.length || 30 }));
+
+            const storedEmail = localStorage.getItem('koe_user_email');
+            const storedName = localStorage.getItem('koe_user_name');
+            const lastSnippet = localStorage.getItem('koe_last_snippet') || "";
+
+            // ▼ URLパラメータから sequence を取得（本棚からのジャンプ用）
+            const urlParams = new URLSearchParams(window.location.search);
+            const forcedSequence = parseInt(urlParams.get("sequence"), 10);
+
+            if (storedEmail) {
+              const userData = await apiFetch('upsertUser', { userData: { email: storedEmail, name: storedName } });
+              setUser({ ...userData, email: storedEmail, name: storedName });
+              localStorage.setItem('koe_user_id', userData.user_id);
+              
+              // 指定があればその問いへ、なければ通常の進捗へ
+              const targetIndex = (forcedSequence && forcedSequence > 0 && forcedSequence <= qList.length) 
+                                  ? forcedSequence - 1 
+                                  : (userData.current_sequence_order || 1) - 1;
+
+              setProgress(p => ({ ...p, currentIndex: targetIndex, lastSnippet }));
+              
+              if (forcedSequence) {
+                setScene(1); // 直接問い画面へ
+              } else {
+                checkDoorTransition();
+              }
+            } else { setScene(-1); }
+          } catch (e) { alert("初期化エラー。API設定を確認してください。"); } 
+          finally { setIsInitializing(false); }
+        };
+        initApp();
+      }, []);
+
+      const checkDoorTransition = () => {
+        const hasStarted = localStorage.getItem('koe_has_started');
+        const lastVisit = localStorage.getItem('koe_last_visit');
+        const now = Date.now();
+        if (!hasStarted) { setScene(0); localStorage.setItem('koe_has_started', 'true'); } 
+        else if (!lastVisit || (now - parseInt(lastVisit, 10)) > 24 * 60 * 60 * 1000) { setScene(0); } 
+        else { setScene(1); }
       };
 
-      const handleTabChange = (step) => {
-        if (isEditing) { setSteps(prev => ({ ...prev, [`step${currentStep}`]: editTempText })); setIsEditing(false); }
-        setCurrentStep(step);
+      const handleLoginSubmit = async (email, name) => {
+        setIsInitializing(true);
+        try {
+          const userData = await apiFetch('upsertUser', { userData: { email, name } });
+          setUser({ ...userData, email, name });
+          localStorage.setItem('koe_user_email', email); localStorage.setItem('koe_user_name', name);
+          localStorage.setItem('koe_user_id', userData.user_id);
+          setProgress(p => ({ ...p, currentIndex: (userData.current_sequence_order || 1) - 1 }));
+          
+          if (userData.is_new) { setScene(0.1); localStorage.setItem('koe_has_started', 'true'); }
+          else { checkDoorTransition(); }
+        } catch(e) { alert("ログインに失敗しました"); } 
+        finally { setIsInitializing(false); }
       };
 
-      const startEditing = () => { setEditTempText(steps[`step${currentStep}`]); setIsEditing(true); };
-      const saveEdit = () => { setSteps(prev => ({ ...prev, [`step${currentStep}`]: editTempText })); setIsEditing(false); };
-      const cancelEdit = () => { setIsEditing(false); };
+      const handleRecordComplete = (txt, dur, url, blob) => {
+        setVoiceData(prev => ({...prev, transcript: txt, duration: dur, audioUrl: url, audioBlob: blob, hasAudio: !!(blob && blob.size > 0)}));
+      };
+
+      if (isInitializing) return <div className="bg-[#0f172a] h-screen w-screen flex items-center justify-center"><p className="text-white/30 tracking-widest text-sm">読み込んでいます...</p></div>;
+
+      const currentQ = questionsDB[progress.currentIndex % questionsDB.length] || { chapter: "", text: "（問いを取得できませんでした）", preview_text: "" };
+      const warmupQ = { text: "いま、目の前にあるものを一つ教えてください" };
 
       return (
-        <div className="h-full w-full flex flex-col px-4 py-8 fade-in overflow-hidden bg-slate-900/40">
-          <header className="flex mb-4 border-b border-white/5 font-serif">
-            {[1, 2].map(s => (
-              <button key={s} onClick={() => handleTabChange(s)} className={`step-tab ${currentStep === s ? 'active' : ''}`}>Step {s}</button>
-            ))}
+        <div className="app-container" style={{ fontSize: UX_CONFIG.baseFontSize }}>
+          {scene === -1 && <Scene_Login onLogin={handleLoginSubmit} />}
+          {scene === 0.1 && <Scene0_1_WarmupIntro onNext={() => setScene(0.2)} />}
+          {scene === 0.2 && <Scene_Recording question={warmupQ} onComplete={(t,d,u,b) => { handleRecordComplete(t,d,u,b); setScene(0.3); }} />}
+          {scene === 0.3 && <Scene3_5_VoiceCheck data={voiceData} isWarmup={true} onRetry={() => setScene(0.2)} onProceed={async () => {
+             try { await apiFetch('saveWarmup', { warmupData: { user_id: user.user_id, transcript_raw: voiceData.transcript, duration_seconds: voiceData.duration, has_audio: voiceData.hasAudio } }); } catch(e){}
+             setScene(1);
+          }} />}
+
+          {scene === 0 && <Scene0_Door onNext={() => setScene(1)} />}
+          {scene === 1 && <Scene1_MyPage progress={progress} question={currentQ} userName={user?.name} onNext={() => { setVoiceData({ duration: 0, transcript: "", audioUrl: null, hasAudio: false, audioBlob: null, editedText: "", aiMirror: "", meaning: "", extractedSnippet: "" }); setScene(2); }} />}
+          {scene === 2 && <Scene2_PreVoice onNext={() => setScene(3)} duration={3000} />}
+          {scene === 3 && <Scene_Recording question={currentQ} onComplete={(t,d,u,b) => { handleRecordComplete(t,d,u,b); setScene(3.5); }} />}
+          
+          {scene === 3.5 && <Scene3_5_VoiceCheck data={voiceData} isWarmup={false} onRetry={() => setScene(3)} onProceed={async () => {
+             setScene(4);
+             try {
+               const res = await apiFetch('processAudio', { transcriptRaw: voiceData.transcript });
+               setVoiceData(prev => ({...prev, editedText: res.transcript_edited, aiMirror: res.ai_mirror_text, extractedSnippet: res.extracted_snippet}));
+             } catch (e) {
+               const raw = String(voiceData.transcript || '').trim();
+               setVoiceData(prev => ({...prev, editedText: raw || "（音声が認識されませんでした）", aiMirror: "ひとつの時間が、形になっています", extractedSnippet: "「" + raw.slice(0, 45) + (raw.length > 45 ? "…" : "") + "」"}));
+             }
+          }} />}
+          
+          {scene === 4 && <Scene4_AIMirror data={voiceData} onNext={() => setScene(5)} onRetry={() => setScene(3)} />}
+          {scene === 5 && <Scene5_Meaning onNext={async (tag) => {
+             const answerData = {
+               user_id: user.user_id, question_id: currentQ.question_id || `Q${progress.currentIndex + 1}`, chapter: currentQ.chapter || "",
+               sequence_order: progress.currentIndex + 1, transcript_raw: voiceData.transcript, transcript_edited: voiceData.editedText,
+               ai_mirror_text: voiceData.aiMirror, extracted_snippet: voiceData.extractedSnippet, meaning_answer: tag,
+               privacy_level: 'private', duration_seconds: voiceData.duration, status: "saved"
+             };
+             try { await apiFetch('saveAnswer', { answerData }); localStorage.setItem('koe_last_snippet', voiceData.extractedSnippet); } catch(e) {}
+             setVoiceData(prev => ({...prev, meaning: tag}));
+             setScene(6);
+          }} />}
+          {scene === 6 && <Scene6_Completion progress={progress} nextPreview={questionsDB[(progress.currentIndex + 1) % questionsDB.length]?.preview_text || "次の記憶へ"} onTalkMore={() => { setProgress(p => ({ ...p, currentIndex: p.currentIndex + 1, lastSnippet: voiceData.extractedSnippet })); localStorage.setItem('koe_last_visit', Date.now().toString()); setScene(2); }} onBackToBookshelf={() => { setProgress(p => ({ ...p, lastSnippet: voiceData.extractedSnippet })); localStorage.setItem('koe_last_visit', Date.now().toString()); setScene(1); }} />}
+        </div>
+      );
+    }
+
+    function Scene_Login({ onLogin }) {
+      const [email, setEmail] = useState(""); const [name, setName] = useState("");
+      return (
+        <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center translate-y-4">
+          <p className="text-[1.1rem] text-white/90 text-narrative mb-12">この物語の持ち主を<br/>教えてください。</p>
+          <div className="w-full max-w-[280px] space-y-8 mb-12">
+            <div><p className="text-white/40 text-xs tracking-widest mb-2">お名前（ニックネーム可）</p><input type="text" className="quiet-input" value={name} onChange={e => setName(e.target.value)} placeholder="例：タカシ" /></div>
+            <div><p className="text-white/40 text-xs tracking-widest mb-2">本棚の鍵（メールアドレス）</p><input type="email" className="quiet-input" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" /></div>
+          </div>
+          <button onClick={() => onLogin(email, name)} disabled={!email || !name} className="btn-quiet w-full max-w-[280px] py-4 rounded-full tracking-widest text-[0.95rem]">物語をはじめる</button>
+        </div>
+      );
+    }
+
+    function Scene0_1_WarmupIntro({ onNext }) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-center fade-enter px-4 translate-y-4">
+          <div className="space-y-8 mb-16 text-narrative"><p className="text-[1.1rem] text-white/90">はじめに、少しだけ<br/>声を出してみましょう。</p><p className="text-[0.9rem] text-white/60">うまく話さなくて大丈夫です。<br/>この時間の言葉は、本には残りません。</p></div>
+          <button onClick={onNext} className="btn-quiet w-full max-w-[280px] py-4 rounded-full tracking-widest text-[0.95rem]">準備ができました</button>
+        </div>
+      );
+    }
+
+    function Scene0_Door({ onNext }) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-center fade-enter px-4 translate-y-4">
+          <div className="space-y-6 mb-16 text-narrative"><p className="text-[1.1rem] text-white/90">この時間は、少し落ち着いて<br/>過ごせるときに開いてみてください</p><p className="text-[0.85rem] text-white/40">目安：10〜15分</p><p className="text-[0.85rem] text-white/40">急がなくて大丈夫です。<br/>あなたのペースで進めていきます。</p></div>
+          <button onClick={onNext} className="btn-quiet w-full max-w-[280px] py-4 rounded-full tracking-widest text-[0.95rem]">この時間を始める</button>
+        </div>
+      );
+    }
+
+    function Scene1_MyPage({ progress, question, userName, onNext }) {
+      return (
+        <div className="h-full flex flex-col fade-enter">
+          <header className="mb-8 pt-2">
+            <h1 className="text-white/70 text-sm tracking-widest mb-6">{userName || "あなた"}さんの物語</h1>
+            <div className="space-y-2">
+              <p className="text-white/60 text-xs tracking-widest">{question.chapter}</p>
+              <div className="w-full h-[2px] bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-white/40" style={{ width: `${(progress.currentIndex / progress.total) * 100}%` }}></div></div>
+              <div className="flex justify-between items-end mt-2"><p className="text-white/80 text-sm tracking-widest">{progress.currentIndex === 0 ? 'Page 1' : `${progress.currentIndex} / ${progress.total} ページ`}</p></div>
+              <p className="text-white/50 text-[0.75rem] tracking-widest mt-1">{progress.currentIndex === 0 ? 'ここから、あなたの物語がはじまります' : `あなたの物語は、${progress.currentIndex}ページまで積み重なっています`}</p>
+            </div>
           </header>
-          
-          {!loading && (steps.era || steps.emotion || (steps.tags && steps.tags.length > 0)) && (
-            <div className="flex flex-wrap gap-2 mb-4 px-2 fade-in">
-              <CustomIcon name="tag" size={16} className="text-white/40 mt-1" />
-              {steps.era && steps.era !== "不明" && <span className="bg-white/10 text-white/80 text-xs px-3 py-1.5 rounded-full border border-white/5">{steps.era}</span>}
-              {steps.emotion && steps.emotion !== "不明" && <span className="bg-white/10 text-white/80 text-xs px-3 py-1.5 rounded-full border border-white/5">{steps.emotion}</span>}
-              {steps.tags && steps.tags.map(t => <span key={t} className="bg-white/10 text-white/80 text-xs px-3 py-1.5 rounded-full border border-white/5">#{t}</span>)}
-            </div>
-          )}
-
-          <div className={`flex-1 rounded-[2rem] border border-white/10 p-6 shadow-inner overflow-y-auto relative mb-6 transition-colors ${isEditing ? 'bg-white/10' : 'bg-black/20'}`}>
-            {loading ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 font-serif">
-                <CustomIcon name="loader-2" className="loader-spin text-white/40" size={32} />
-                <p className="text-white/40 text-sm font-serif">言葉を編み、文脈を整理しています...</p>
-              </div>
-            ) : (
-              isEditing ? (
-                <textarea value={editTempText} onChange={(e) => setEditTempText(e.target.value)} className="w-full h-full bg-transparent text-white font-serif text-[1.1rem] leading-[2.2] outline-none resize-none" autoFocus />
-              ) : (
-                <div className="font-serif leading-[2.2] text-white text-[1.1rem] whitespace-pre-wrap text-shadow-premium pb-10 clearfix">
-                  <button onClick={startEditing} className="float-right ml-4 mb-2 bg-white/10 p-3 rounded-full text-white/70 hover:text-white hover:bg-white/20 transition-all shadow-lg backdrop-blur-md"><CustomIcon name="pencil" size={18} /></button>
-                  {steps[`step${currentStep}`]}
-                </div>
-              )
+          <div className="flex-1 flex flex-col justify-center">
+            {progress.currentIndex > 0 && progress.lastSnippet && (
+              <div className="mb-10"><p className="text-white/30 text-xs tracking-widest mb-3">前回の語り：</p><p className="text-white/60 text-[0.95rem] text-narrative pl-4 border-l border-white/20 italic">{progress.lastSnippet}</p></div>
             )}
+            <div className="glass-card p-6 text-center space-y-6"><p className="text-white/50 text-xs tracking-widest">今日の問い</p><p className="text-[1.1rem] text-narrative text-white/90 whitespace-pre-wrap">{question.text}</p></div>
           </div>
-          
-          <div className="flex flex-col gap-4 px-2">
-            {isEditing ? (
-              <div className="flex gap-4 font-serif fade-in">
-                <button onClick={cancelEdit} className="flex-1 py-4 text-white/60 text-[1rem] border border-white/20 rounded-full bg-white/5 active:bg-white/10 transition-colors font-serif">キャンセル</button>
-                <button onClick={saveEdit} className="flex-1 py-4 text-white text-[1rem] border border-white/50 rounded-full bg-white/20 active:bg-white/30 transition-colors font-serif flex items-center justify-center gap-2">
-                  <CustomIcon name="check" size={18} />修正を完了する
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4 fade-in">
-                {isTestMode ? (
-                  <button onClick={onTestComplete} className="w-full py-5 rounded-full bg-white text-slate-900 font-bold tracking-widest shadow-xl text-lg font-serif">準備完了。本番の問いへ進む</button>
-                ) : (
-                  <button onClick={() => { setIsSaving(true); onSave(steps, data.audioBase64, () => setIsSaving(false)); }} disabled={loading || isSaving} className="btn-glass w-full py-5 rounded-full text-[1.1rem] shadow-xl flex items-center justify-center gap-3 font-serif">
-                    {isSaving ? <CustomIcon name="loader-2" className="loader-spin" size={20} /> : "この内容で保存する"}
-                  </button>
-                )}
-                
-                <div className="flex gap-4 font-serif">
-                  <button onClick={togglePlay} className="flex-1 py-3 text-white/70 text-[0.85rem] border border-white/10 rounded-full flex items-center justify-center gap-2 bg-white/5 active:bg-white/10 transition-colors font-serif">
-                    <CustomIcon name={isPlaying ? "square" : "play"} size={16} /><span>{isPlaying ? "停止" : "再生"}</span>
-                  </button>
-                  <button onClick={onBack} disabled={isSaving} className="flex-1 py-3 text-white/30 text-[0.85rem] text-center underline underline-offset-4 font-serif">やり直す</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // ▼▼▼ サンキュー画面 ▼▼▼
-    // ==========================================
-    function ThankYouView({ onFinish, onContinue }) {
-      return (
-        <div className="h-full w-full flex flex-col items-center justify-center p-10 fade-in bg-gradient-to-b from-[#1e293b] to-[#d97706]">
-          <div className="text-center space-y-12">
-            <h2 className="text-4xl text-white text-shadow-premium font-serif">ありがとうございます。</h2>
-            <div className="flex flex-col gap-6 w-full max-w-xs mx-auto font-serif">
-              <button onClick={onContinue} className="btn-glass py-6 rounded-full text-[1.2rem] font-serif">もう少し、語ってみる</button>
-              <button onClick={onFinish} className="w-full py-2 text-white/40 text-[0.95rem] hover:text-white transition-all underline underline-offset-8 decoration-white/20 font-serif">今日はここまでにする</button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // ▼▼▼ エピローグ画面 ▼▼▼
-    // ==========================================
-    function EpilogueView({ onHome }) {
-      return (
-        <div className="h-full w-full flex flex-col items-center justify-center p-12 fade-in bg-slate-900/60 text-center">
-          <div className="flex-1 flex flex-col justify-center space-y-12 drop-shadow-xl">
-            <div className="space-y-10 font-serif text-white/90 leading-[2.5] text-[1.1rem]">
-              <p>ここまで、語ってくれてありがとうございました。</p>
-              <p>語られた声や言葉は、<br />あなたの温度のまま、<br />ちゃんと、ここに残っています。</p>
-              <p>また語りたくなったら、<br />いつでも、ここへ。</p>
-              <p className="pt-4 text-white font-bold">おつかれさまでした。</p>
-            </div>
-          </div>
-          <button onClick={onHome} className="text-white/30 text-[0.9rem] font-serif hover:text-white/60 transition-all underline underline-offset-8 decoration-white/10 pb-10">ホームへ</button>
-        </div>
-      );
-    }
-
-    const startApp = () => { const container = document.getElementById('root'); if (container) { const root = ReactDOM.createRoot(container); root.render(<App />); } };
-    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', startApp); } else { startApp(); }
-  </script>
-</body>
-</html>
+          <div className="flex flex-col gap-4 mt-8">
+            <button onClick={onNext} className="btn-quiet bg-white/10 w-full py-4 rounded-full tracking-widest text-white">今回の問いに答える</button>
+            <button className="w-full py-3 text-white/
