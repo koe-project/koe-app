@@ -29,7 +29,7 @@
     const { useState, useEffect, useMemo, useRef } = React;
     
     // ▼▼▼ あなたのウェブアプリURL ▼▼▼
-    const UX_CONFIG = { GAS_API_URL: "https://script.google.com/macros/s/AKfycbx6oo40xjPpE9gJ-8sPiV9odjdOxG89Cygc3IUXPG5Tv8klpqghXi4vGRQAwhywZeqk/exec" };
+    const UX_CONFIG = { GAS_API_URL: "https://script.google.com/macros/s/AKfycbzTdIahyO_f_PF55TsaKkmWnV37tl1q77lv0L5SRkVCzvAOL4RDgjFNb6gO08O-GwtY/exec" };
 
     const apiFetch = async (action, data = {}) => {
       const res = await fetch(UX_CONFIG.GAS_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action, ...data }) });
@@ -54,8 +54,6 @@
       const [mode, setMode] = useState("grid");
       const [activeChapter, setActiveChapter] = useState("すべて");
       const [bookData, setBookData] = useState({ user: {}, progress: { currentIndex: 0, total: 30 }, pages: [] });
-      
-      // 仕様通り、sequence_order で管理
       const [selectedSeq, setSelectedSeq] = useState(null);
 
       const loadData = async () => {
@@ -127,9 +125,6 @@
       );
     }
 
-    // ==========================================
-    // 詳細画面（PageDetailView）と ページ送りナビゲーション
-    // ==========================================
     function PageDetailView({ pages, selectedSeq, onBack, onNavigate, onRefresh }) {
       const [isUploading, setIsUploading] = useState(false);
       const fileRef = useRef(null);
@@ -142,7 +137,6 @@
       const isPrevChapterChange = prevPage && prevPage.chapter !== page.chapter;
       const isNextChapterChange = nextPage && nextPage.chapter !== page.chapter;
 
-      // 質問文の短縮メソッド（24文字超過で「…」）
       const shorten = (text, max = 24) => text && text.length > max ? text.slice(0, max) + "…" : text;
 
       const handleUpload = (e) => {
@@ -198,14 +192,23 @@
               </div>
             </div>
           ) : (
-            // ▼ 未回答ページの「余白」としてのUI
             <div className="text-center py-20 fade-enter">
               <p className="text-white/40 text-[0.95rem] tracking-widest mb-6 font-serif">まだ、このページは静かなままです</p>
               <p className="text-white/30 text-[0.85rem] tracking-widest italic font-serif">言葉になるときを、待っています</p>
+              
+              {/* ▼ 未回答ページからの「語る」導線 */}
+              <div className="mt-16 flex justify-center">
+                <button
+                  onClick={() => { window.location.href = `index.html?sequence=${page.sequence_order}`; }}
+                  className="btn-quiet px-10 py-4 rounded-full tracking-widest text-sm hover:text-white hover:bg-white/[0.05] transition-all"
+                >
+                  この問いについて語る
+                </button>
+              </div>
             </div>
           )}
 
-          {/* ▼ 前後へのページ送りナビゲーション */}
+          {/* ▼ ページめくりナビゲーション */}
           <div className="mt-20 pt-8 border-t border-white/10 grid grid-cols-2 gap-8">
             <div>
               {prevPage && (
@@ -239,7 +242,6 @@
               )}
             </div>
           </div>
-
         </div>
       );
     }
