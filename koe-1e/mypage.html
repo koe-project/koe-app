@@ -132,4 +132,258 @@
       const selectedPage = bookData.pages.find(p => p.answer_id === selectedAnswerId);
 
       if (isLoading) {
-        return <div className="h-screen w-screen bg-[#0f172a] flex items-center justify-center text-white/30 tracking-widest text-sm">書架
+        return <div className="h-screen w-screen bg-[#0f172a] flex items-center justify-center text-white/30 tracking-widest text-sm">書架を開いています...</div>;
+      }
+
+      return (
+        <div className="h-full flex flex-col bg-[#0f172a] text-white overflow-hidden">
+          <BookshelfHeader progress={bookData.progress} userName={bookData.user.name} />
+          <div className="flex flex-1 overflow-hidden">
+            <ChapterSidebar 
+              activeChapter={activeChapter} 
+              onChange={(chapter) => { setActiveChapter(chapter); setMode("grid"); }} 
+              onFinalize={() => setMode("finalize")}
+              progress={bookData.progress}
+            />
+            <div className="flex-1 overflow-y-auto relative">
+              <MainPanel 
+                mode={mode} 
+                setMode={setMode} 
+                pages={bookData.pages}
+                activeChapter={activeChapter}
+                selectedPage={selectedPage}
+                onOpenPage={(id) => { setSelectedAnswerId(id); setMode("page"); }}
+                progress={bookData.progress}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 2. BookshelfHeader
+    // ==========================================
+    function BookshelfHeader({ progress, userName }) {
+      const getStatusText = () => {
+        if (progress.currentIndex === progress.total) return "本の仕上げに進めます";
+        if (progress.currentIndex >= 20) return "この内容で一冊にできます";
+        return "まだ語りの途中です";
+      };
+
+      return (
+        <div className="flex justify-between items-center px-10 py-5 border-b border-white/5 bg-white/[0.01]">
+          <div>
+            <p className="text-white/50 text-xs tracking-widest mb-2">{userName}さんの物語</p>
+            <div className="flex items-end gap-4">
+              <p className="text-white/90 text-[1.05rem] tracking-wider font-serif">
+                {progress.currentIndex} <span className="text-white/40 text-sm">/ {progress.total} ページ</span>
+              </p>
+              <p className="text-white/40 text-xs tracking-widest mb-0.5">{getStatusText()}</p>
+            </div>
+          </div>
+          <div className="flex gap-8">
+            <button className="text-white/40 hover:text-white/80 transition-colors text-[0.8rem] tracking-widest">
+              本を整える
+            </button>
+            <button className="text-white/40 hover:text-white/80 transition-colors text-[0.8rem] tracking-widest">
+              家族とつなぐ
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 3. ChapterSidebar
+    // ==========================================
+    function ChapterSidebar({ activeChapter, onChange, onFinalize, progress }) {
+      const chapters = ["すべて", "思い出す", "積み重ねる", "関係性", "手渡す"];
+      const isReady = progress.currentIndex >= 20;
+      const isComplete = progress.currentIndex === progress.total;
+
+      const finalizeText = isComplete ? "本の仕上げに進む" : isReady ? "この内容で一冊にできます" : "本を仕上げる";
+      const finalizeColor = isReady ? "text-amber-400/90 hover:bg-amber-400/10 hover:text-amber-300" : "text-white/30 hover:bg-white/5 hover:text-white/60";
+
+      return (
+        <div className="w-64 border-r border-white/5 p-8 flex flex-col bg-white/[0.005]">
+          <p className="text-white/30 text-[0.65rem] tracking-widest mb-8">物語の章</p>
+          <div className="flex-1 space-y-1">
+            {chapters.map(c => (
+              <button
+                key={c}
+                onClick={() => onChange(c)}
+                className={`block w-full text-left py-2.5 px-4 rounded-md tracking-widest text-[0.85rem] transition-all font-light ${
+                  activeChapter === c 
+                    ? "bg-white/[0.06] text-white/80 shadow-sm" 
+                    : "text-white/40 hover:bg-white/5 hover:text-white/70"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          
+          <div className="pt-8 border-t border-white/5 mt-auto">
+            <button 
+              onClick={onFinalize}
+              className={`w-full text-left py-4 px-4 rounded-lg transition-all text-sm tracking-widest flex justify-between items-center ${finalizeColor}`}
+            >
+              <span className={isReady ? "font-medium" : ""}>{finalizeText}</span> <span>→</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 4. MainPanel (Router)
+    // ==========================================
+    function MainPanel({ mode, setMode, pages, activeChapter, selectedPage, onOpenPage, progress }) {
+      const filteredPages = useMemo(() => {
+        if (activeChapter === "すべて") return pages;
+        return pages.filter(p => p.chapter === activeChapter);
+      }, [pages, activeChapter]);
+
+      return (
+        <div className="min-h-full fade-enter p-10 pb-20">
+          {mode === "grid" && <GridView pages={filteredPages} onOpen={onOpenPage} activeChapter={activeChapter} />}
+          {mode === "page" && selectedPage && <PageDetailView page={selectedPage} onBack={() => setMode("grid")} />}
+          {mode === "finalize" && <FinalizeView progress={progress} onBack={() => setMode("grid")} />}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 5. GridView（一覧）
+    // ==========================================
+    function GridView({ pages, onOpen, activeChapter }) {
+      return (
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-10">
+            <h2 className="text-2xl text-white/90 tracking-widest font-serif">{activeChapter}</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {pages.map(p => {
+              const isAnswered = p.is_answered;
+              const hasPhoto = p.has_photo;
+              
+              let indicatorClass = "w-2 h-2 rounded-full border border-white/20";
+              if (isAnswered && !hasPhoto) indicatorClass = "w-2 h-2 rounded-full bg-white/40 shadow-[0_0_6px_rgba(255,255,255,0.2)]";
+              if (isAnswered && hasPhoto) indicatorClass = "w-2.5 h-2.5 rounded-full border-2 border-[#0f172a] bg-amber-500/80 ring-1 ring-amber-500/40 shadow-[0_0_8px_rgba(245,158,11,0.3)]";
+              
+              return (
+                <div
+                  key={p.sequence_order}
+                  onClick={() => isAnswered ? onOpen(p.answer_id) : null}
+                  className={`glass-card p-6 rounded-xl flex flex-col h-52 relative overflow-hidden transition-all duration-500
+                    ${isAnswered ? 'cursor-pointer group' : 'cursor-not-allowed opacity-60'}
+                  `}
+                >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  
+                  <div className="flex justify-between items-start mb-4">
+                    <p className="text-[0.65rem] tracking-[0.2em] font-serif text-white/40">PAGE {p.sequence_order}</p>
+                    <div className={indicatorClass}></div>
+                  </div>
+                  
+                  <p className={`text-[0.95rem] leading-[1.8] font-serif flex-1 mt-1 transition-colors line-clamp-3
+                    ${isAnswered ? 'text-white/70 group-hover:text-white/90' : 'text-white/20 italic'}`}
+                  >
+                    {isAnswered ? p.extracted_snippet : "まだ、このページは静かなままです"}
+                  </p>
+                  
+                  <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center">
+                    <p className="text-[0.75rem] text-white/30 tracking-widest truncate pr-4">{p.question_text}</p>
+                    {isAnswered && <span className="text-white/20 group-hover:text-white/50 transition-colors text-xs">→</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 6. PageDetailView（ページ詳細）
+    // ==========================================
+    function PageDetailView({ page, onBack }) {
+      return (
+        <div className="max-w-3xl mx-auto pb-10">
+          <button onClick={onBack} className="mb-10 text-white/30 hover:text-white/70 transition-colors text-sm tracking-widest flex items-center gap-2">
+            <span>←</span> 書架に戻る
+          </button>
+          <div className="mb-16 text-center">
+            <p className="text-white/30 text-xs tracking-[0.3em] font-serif mb-6">PAGE {page.sequence_order}</p>
+            <h1 className="text-xl text-white/70 tracking-widest font-serif leading-relaxed px-4">{page.question_text}</h1>
+          </div>
+          <div className="mb-12 p-6 bg-white/[0.02] border-l-2 border-amber-600/50 rounded-r-lg shadow-sm">
+            <p className="text-amber-100/70 text-[0.95rem] tracking-widest italic">{page.ai_mirror_text}</p>
+          </div>
+          <div className="mb-20">
+            <p className="text-white/90 text-[1.05rem] leading-[2.4] tracking-[0.08em] font-serif whitespace-pre-wrap">{page.transcript_edited}</p>
+          </div>
+          <div className="border-t border-white/10 pt-12 flex flex-col items-center">
+            <p className="text-white/30 text-xs tracking-widest mb-6">このページに添えるもの</p>
+            <button className="btn-quiet px-8 py-4 rounded-full text-sm tracking-widest flex items-center gap-3">
+              <span className="text-lg font-light">+</span> このページに、風景を添える
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 7. FinalizeView（仕上げ）
+    // ==========================================
+    function FinalizeView({ progress, onBack }) {
+      const isReady = progress.currentIndex >= 20;
+      const isComplete = progress.currentIndex === progress.total;
+
+      return (
+        <div className="max-w-2xl mx-auto text-center pt-10">
+           <button onClick={onBack} className="mb-16 text-white/30 hover:text-white/70 transition-colors text-sm tracking-widest mx-auto flex items-center gap-2">
+            <span>←</span> 書架に戻る
+          </button>
+
+          <p className="text-white/50 text-xs tracking-widest mb-6">この本の現在地</p>
+          <p className="text-2xl text-white/90 tracking-widest font-serif mb-4">現在、{progress.currentIndex}ページが編まれています</p>
+          
+          <p className="text-white/40 text-[0.9rem] leading-relaxed mb-16">
+            {isComplete 
+              ? "すべての問いに答え、一冊の本となる言葉が揃いました。" 
+              : isReady 
+                ? "語られた言葉が、一冊の本になるだけの量まで積み重なっています。" 
+                : "まだ語りの途中です。本にするためには、もう少し記憶を紡ぐ必要があります。"}
+          </p>
+
+          <div className="glass-card p-8 rounded-2xl mb-12 text-left space-y-6">
+            <h3 className="text-white/70 text-sm tracking-widest border-b border-white/10 pb-3">本のかたちを決める</h3>
+            <div className="flex justify-between items-center text-sm text-white/50"><span>タイトル・著者名</span><span className="text-white/30">未設定</span></div>
+            <div className="flex justify-between items-center text-sm text-white/50"><span>添えられた写真</span><span className="text-white/80">0 枚</span></div>
+            <div className="flex justify-between items-center text-sm text-white/50"><span>冊子の仕様</span><span className="text-white/30">未選択</span></div>
+            <div className="flex justify-between items-center text-sm text-white/50"><span>冊数</span><span className="text-white/80">1 冊</span></div>
+          </div>
+
+          <div className="flex flex-col items-center">
+            {isReady && !isComplete && (
+              <p className="text-white/50 text-[0.8rem] tracking-widest mb-4">ここまでの語りで、一冊の本として仕上げることができます。</p>
+            )}
+            <button disabled={!isReady} className={`w-full py-5 rounded-xl tracking-widest text-[0.95rem] shadow-lg transition-all ${isReady ? "bg-white/10 text-white/90 hover:bg-white/15 border border-white/10" : "bg-white/5 text-white/30 cursor-not-allowed border border-transparent"}`}>
+              この内容で本の仕上げに進む
+            </button>
+          </div>
+          <button onClick={onBack} className="mt-8 text-white/40 hover:text-white/70 text-sm tracking-widest underline underline-offset-4 transition-colors">
+            書架に戻り、もう少し語る
+          </button>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<KoeBookshelf />);
+  </script>
+</body>
+</html>
