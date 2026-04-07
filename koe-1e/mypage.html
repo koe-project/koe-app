@@ -55,7 +55,7 @@
       const [activeChapter, setActiveChapter] = useState("すべて");
       const [bookData, setBookData] = useState({ user: {}, progress: { currentIndex: 0, total: 30 }, pages: [] });
       
-      // ▼ 変更：answer_id ではなく「ページ番号 (sequence_order)」で管理し、未回答ページも開けるようにする
+      // 仕様通り、sequence_order で管理
       const [selectedSeq, setSelectedSeq] = useState(null);
 
       const loadData = async () => {
@@ -113,8 +113,7 @@
           <h2 className="text-2xl text-white/90 tracking-widest font-serif mb-10">{activeChapter}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {pages.map(p => (
-              // ▼ 変更：未回答ページもクリック可能（opacityを落とすことで未回答感を維持）
-              <div key={p.sequence_order} onClick={() => onOpen(p.sequence_order)} className={`glass-card p-6 rounded-xl flex flex-col h-52 relative overflow-hidden transition-all duration-500 cursor-pointer group hover:bg-white/[0.03] ${p.is_answered ? '' : 'opacity-50 hover:opacity-70'}`}>
+              <div key={p.sequence_order} onClick={() => onOpen(p.sequence_order)} className={`glass-card p-6 rounded-xl flex flex-col h-52 relative overflow-hidden transition-all duration-500 cursor-pointer group hover:bg-white/[0.03] ${p.is_answered ? '' : 'opacity-40 hover:opacity-60'}`}>
                 <div className="flex justify-between items-start mb-4">
                   <p className="text-[0.65rem] text-white/40 font-serif tracking-[0.2em]">PAGE {p.sequence_order}</p>
                   <div className={`rounded-full ${p.has_photo ? "w-2.5 h-2.5 border-2 border-[#0f172a] bg-amber-500/90 shadow-[0_0_10px_rgba(245,158,11,0.5)]" : p.is_answered ? "w-2 h-2 bg-white/40 shadow-[0_0_6px_rgba(255,255,255,0.2)]" : "w-2 h-2 border border-white/20"}`}></div>
@@ -128,14 +127,23 @@
       );
     }
 
+    // ==========================================
+    // 詳細画面（PageDetailView）と ページ送りナビゲーション
+    // ==========================================
     function PageDetailView({ pages, selectedSeq, onBack, onNavigate, onRefresh }) {
       const [isUploading, setIsUploading] = useState(false);
       const fileRef = useRef(null);
       
       const pageIndex = pages.findIndex(p => p.sequence_order === selectedSeq);
       const page = pages[pageIndex];
-      const prevPage = pages[pageIndex - 1];
-      const nextPage = pages[pageIndex + 1];
+      const prevPage = pageIndex > 0 ? pages[pageIndex - 1] : null;
+      const nextPage = pageIndex < pages.length - 1 ? pages[pageIndex + 1] : null;
+
+      const isPrevChapterChange = prevPage && prevPage.chapter !== page.chapter;
+      const isNextChapterChange = nextPage && nextPage.chapter !== page.chapter;
+
+      // 質問文の短縮メソッド（24文字超過で「…」）
+      const shorten = (text, max = 24) => text && text.length > max ? text.slice(0, max) + "…" : text;
 
       const handleUpload = (e) => {
         const file = e.target.files[0]; if (!file) return;
@@ -153,7 +161,7 @@
       if (!page) return null;
 
       return (
-        <div className="max-w-3xl mx-auto p-10 pb-32 fade-enter">
+        <div className="max-w-3xl mx-auto p-10 pb-20 fade-enter">
           <button onClick={onBack} className="mb-10 text-white/30 hover:text-white/70 text-sm tracking-widest transition-colors">← 書架に戻る</button>
           
           <div className="text-center mb-10">
@@ -161,7 +169,6 @@
             <h1 className="text-xl text-white/70 font-serif leading-relaxed px-4">{page.question_text}</h1>
           </div>
 
-          {/* ▼ 出し分け：回答済みUI と 未回答（空白）UI */}
           {page.is_answered ? (
             <div className="fade-enter">
               <div className="mb-10 p-6 bg-white/[0.04] border-l-2 border-amber-500/50 rounded-r-lg shadow-sm">
@@ -169,7 +176,7 @@
               </div>
               <p className="text-white/90 text-[1.05rem] leading-[2.4] font-serif whitespace-pre-wrap mb-16">{page.transcript_edited}</p>
               
-              <div className="border-t border-white/10 pt-12 flex flex-col items-center">
+              <div className="pt-8 flex flex-col items-center">
                 <p className="text-white/40 text-[0.8rem] mb-6 tracking-widest text-center">この記憶にまつわる、アルバムの中の一枚を加えられます</p>
                 {isUploading ? <p className="animate-pulse text-white/40 text-sm tracking-widest">記憶を定着させています...</p> : (
                   <div className="flex flex-col items-center w-full">
@@ -191,43 +198,48 @@
               </div>
             </div>
           ) : (
+            // ▼ 未回答ページの「余白」としてのUI
             <div className="text-center py-20 fade-enter">
               <p className="text-white/40 text-[0.95rem] tracking-widest mb-6 font-serif">まだ、このページは静かなままです</p>
               <p className="text-white/30 text-[0.85rem] tracking-widest italic font-serif">言葉になるときを、待っています</p>
-              
-              <div className="mt-20">
-                <span className="text-white/20 text-xs tracking-widest border border-white/10 rounded-full px-8 py-3 inline-block cursor-not-allowed">この問いについて語る</span>
-              </div>
             </div>
           )}
 
-          {/* ▼ 追加：ページをめくるナビゲーション（前後の記憶を感じさせる） */}
-          <div className="flex justify-between items-start pt-16 border-t border-white/10 mt-20">
-            {prevPage ? (
-              <button onClick={() => onNavigate(prevPage.sequence_order)} className="text-left group w-5/12">
-                <p className="text-white/40 text-xs tracking-widest mb-2 font-serif group-hover:text-white/60 transition-colors">前のページ</p>
-                <p className="text-white/60 text-xs tracking-[0.2em] font-serif mb-1 group-hover:text-white/80 transition-colors">PAGE {prevPage.sequence_order}</p>
-                <p className="text-white/30 text-[0.7rem] tracking-widest truncate group-hover:text-white/50 transition-colors">{prevPage.question_text}</p>
-              </button>
-            ) : <div className="w-5/12"></div>}
-            
-            {nextPage ? (
-              <button onClick={() => onNavigate(nextPage.sequence_order)} className="text-right group w-5/12 text-right flex flex-col items-end">
-                {page.chapter !== nextPage.chapter ? (
-                  <>
-                    <p className="text-white/40 text-xs tracking-widest mb-2 font-serif group-hover:text-white/60 transition-colors">次の章</p>
-                    <p className="text-white/60 text-[0.9rem] tracking-widest font-serif mb-1 group-hover:text-white/80 transition-colors">{nextPage.chapter}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-white/40 text-xs tracking-widest mb-2 font-serif group-hover:text-white/60 transition-colors">次のページ</p>
-                    <p className="text-white/60 text-xs tracking-[0.2em] font-serif mb-1 group-hover:text-white/80 transition-colors">PAGE {nextPage.sequence_order}</p>
-                    <p className="text-white/30 text-[0.7rem] tracking-widest truncate group-hover:text-white/50 transition-colors">{nextPage.question_text}</p>
-                  </>
-                )}
-              </button>
-            ) : <div className="w-5/12"></div>}
+          {/* ▼ 前後へのページ送りナビゲーション */}
+          <div className="mt-20 pt-8 border-t border-white/10 grid grid-cols-2 gap-8">
+            <div>
+              {prevPage && (
+                <button onClick={() => onNavigate(prevPage.sequence_order)} className="w-full text-left px-4 py-4 rounded-xl hover:bg-white/[0.03] transition-colors group">
+                  <p className="text-white/30 text-[0.65rem] tracking-[0.2em] font-serif mb-2 transition-colors group-hover:text-white/50">
+                    {isPrevChapterChange ? "前の章" : "前のページ"}
+                  </p>
+                  <p className="text-white/70 text-[0.9rem] tracking-widest font-serif mb-1 transition-colors group-hover:text-white/90">
+                    {isPrevChapterChange ? prevPage.chapter : `PAGE ${prevPage.sequence_order}`}
+                  </p>
+                  {!isPrevChapterChange && (
+                    <p className="text-white/40 text-[0.75rem] tracking-widest transition-colors group-hover:text-white/60">{shorten(prevPage.question_text)}</p>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <div>
+              {nextPage && (
+                <button onClick={() => onNavigate(nextPage.sequence_order)} className="w-full text-right px-4 py-4 rounded-xl hover:bg-white/[0.03] transition-colors group flex flex-col items-end">
+                  <p className="text-white/30 text-[0.65rem] tracking-[0.2em] font-serif mb-2 transition-colors group-hover:text-white/50">
+                    {isNextChapterChange ? "次の章" : "次のページ"}
+                  </p>
+                  <p className="text-white/70 text-[0.9rem] tracking-widest font-serif mb-1 transition-colors group-hover:text-white/90">
+                    {isNextChapterChange ? nextPage.chapter : `PAGE ${nextPage.sequence_order}`}
+                  </p>
+                  {!isNextChapterChange && (
+                    <p className="text-white/40 text-[0.75rem] tracking-widest transition-colors group-hover:text-white/60">{shorten(nextPage.question_text)}</p>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
+
         </div>
       );
     }
