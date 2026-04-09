@@ -69,18 +69,16 @@
     function KoeBookshelf() {
       const [isLoading, setIsLoading] = useState(true);
       const [accessError, setAccessError] = useState("");
-      // フローを修正: Grid -> Page -> Finalize -> Cover -> Preview -> Meta -> Complete
       const [mode, setMode] = useState("grid"); 
       const [activeChapter, setActiveChapter] = useState("すべて");
       const [bookData, setBookData] = useState({ user: {}, progress: { currentIndex: 0, total: 30 }, pages: [] });
       const [selectedSeq, setSelectedSeq] = useState(null);
 
-      // ▼ 初期仕様：表紙デザインの設定を管理
       const [bookSettings, setBookSettings] = useState({
         title: "",
         author: "",
-        colorKey: "slate-950", // デフォルトは濃紺
-        coverPhotoUrl: null // 表紙写真
+        colorKey: "slate-950",
+        coverPhotoUrl: null
       });
 
       const loadData = async () => {
@@ -89,10 +87,9 @@
         try { 
           const data = await apiFetch('getBookshelfData', { user_id: id }); 
           setBookData(data);
-          // 初期値をセット
           setBookSettings(prev => ({
             ...prev,
-            title: prev.title || `${data.user.name}さんの物語`,
+            title: prev.title || "", // タイトルはあえて空にして提案を見せる
             author: prev.author || data.user.name
           }));
         }
@@ -112,7 +109,6 @@
               <p className="text-white/90 text-sm font-serif">{bookData.progress.currentIndex} / {bookData.progress.total} ページ</p>
             </div>
             <div className="flex gap-8">
-              {/* ▼ UIから意味へ：「本を整える」から「本の表紙」へ */}
               <button onClick={() => setMode("cover")} className="text-white/40 hover:text-white/80 text-[0.8rem] tracking-widest transition-colors">本の表紙</button>
               <button className="text-white/40 hover:text-white/80 text-[0.8rem] tracking-widest transition-colors">家族とつなぐ</button>
             </div>
@@ -125,7 +121,6 @@
                   <button key={c} onClick={() => { setActiveChapter(c); setMode("grid"); }} className={`block w-full text-left py-2.5 px-4 rounded-md text-[0.85rem] transition-all ${activeChapter === c ? "bg-white/[0.06] text-white/80" : "text-white/40 hover:text-white/70"}`}>{c}</button>
                 ))}
               </div>
-              {/* ▼ フロー：Finalizeの次はCoverView（表紙デザイン）へ */}
               <button onClick={() => setMode("cover")} className={`pt-8 border-t border-white/5 mt-auto text-sm tracking-widest flex justify-between items-center ${bookData.progress.currentIndex >= 20 ? "text-amber-400" : "text-white/20"}`}>
                 <span>本の仕上げに進む</span> <span>→</span>
               </button>
@@ -134,14 +129,9 @@
             <main className="flex-1 overflow-y-auto relative bg-[#0d1321]">
               {mode === "grid" && <GridView pages={activeChapter === "すべて" ? bookData.pages : bookData.pages.filter(p => p.chapter === activeChapter)} onOpen={(seq) => { setSelectedSeq(seq); setMode("page"); }} activeChapter={activeChapter} />}
               {mode === "page" && <PageDetailView pages={bookData.pages} selectedSeq={selectedSeq} onBack={() => setMode("grid")} onNavigate={setSelectedSeq} onRefresh={loadData} />}
-              {mode === "finalize" && <FinalizeView progress={bookData.bookProgress} onBack={() => setMode("grid")} onProceed={() => setMode("cover")} />}
-              
-              {/* ▼ 新規：表紙デザイン画面 */}
+              {mode === "finalize" && <FinalizeView progress={bookData.progress} onBack={() => setMode("grid")} onProceed={() => setMode("cover")} />}
               {mode === "cover" && <BookCoverView bookData={bookData} settings={bookSettings} setSettings={setBookSettings} onBack={() => setMode("grid")} onProceed={() => setMode("preview")} />}
-              
-              {/* ▼ 修正：PreviewView。表紙を渡す */}
               {mode === "preview" && <PreviewView pages={bookData.pages} progress={bookData.progress} settings={bookSettings} onBack={() => setMode("cover")} onNext={() => setMode("complete")} />}
-              
               {mode === "complete" && <OrderCompleteView onBack={() => setMode("grid")} />}
             </main>
           </div>
@@ -150,13 +140,19 @@
     }
 
     // ==========================================
-    // ▼ 新規追加：本の表紙を決める（儀式）画面
-    //🥇 案①：静謐（Koeの本命）を実装
+    // 表紙デザイン（儀式）画面
     // ==========================================
     function BookCoverView({ bookData, settings, setSettings, onBack, onProceed }) {
-      // 本文で使われている写真だけを抽出（表紙写真の候補）
       const photoPages = useMemo(() => bookData.pages.filter(p => p.has_photo), [bookData.pages]);
       const bookColor = BOOK_COLORS[settings.colorKey];
+      
+      // ▼ 追加：静かで邪魔にならないタイトルの提案リスト
+      const titleSuggestions = [
+        "わたしの歩いてきた道",
+        "家族に残すことば",
+        "これまでと、これから",
+        "私のものがたり"
+      ];
 
       return (
         <div className="max-w-6xl mx-auto p-10 pb-20 fade-enter relative">
@@ -166,17 +162,13 @@
 
           <div className="flex flex-col md:flex-row gap-16 items-start justify-center">
             
-            {/* 左側：表紙プレビュー（静謐案の実装） */}
+            {/* 左側：表紙プレビュー */}
             <div className={`shrink-0 w-full max-w-[360px] aspect-[1/1.414] ${bookColor.bg} ${bookColor.text} rounded border ${bookColor.border} cover-shadow flex flex-col items-center justify-between p-10 relative overflow-hidden transition-all duration-500`}>
-                
-                {/* タイトル：中央・やや上 */}
                 <div className="mt-16 text-center">
                     <h1 className="text-xl md:text-2xl font-serif leading-relaxed px-4 tracking-wider whitespace-pre-wrap">
                       {settings.title || "（タイトル未入力）"}
                     </h1>
                 </div>
-
-                {/* 写真：中央（小さめ） */}
                 {settings.coverPhotoUrl ? (
                     <img src={getDirectImageUrl(settings.coverPhotoUrl)} className="w-32 h-32 md:w-40 md:h-40 object-cover rounded opacity-90 shadow-lg" alt="表紙の風景" />
                 ) : (
@@ -184,8 +176,6 @@
                       KOE BOOK
                     </div>
                 )}
-
-                {/* 語り手名：下部に小さく */}
                 <p className="text-[0.8rem] tracking-[0.3em] font-serif mb-4">{settings.author || bookData.user.name}</p>
             </div>
 
@@ -193,14 +183,36 @@
             <div className="flex-1 w-full max-w-lg space-y-12">
                 <div>
                   <p className="text-white/60 text-[0.85rem] tracking-widest mb-3 font-serif">この物語に、名前をつけてください</p>
-                  <input className="quiet-input text-[1.1rem] tracking-wider" value={settings.title} onChange={e => setSettings({...settings, title: e.target.value})} placeholder="例：わたしの歩いてきた道" />
+                  <input 
+                    className="quiet-input text-[1.1rem] tracking-wider" 
+                    value={settings.title} 
+                    onChange={e => setSettings({...settings, title: e.target.value})} 
+                    placeholder="" 
+                  />
+                  {/* ▼ 追加：未入力の時だけ表示される、そっと添えられた提案リスト */}
+                  {!settings.title && (
+                    <div className="mt-5 fade-enter">
+                      <p className="text-white/30 text-[0.65rem] tracking-widest mb-3">迷ったときは、これらの名前から選ぶこともできます</p>
+                      <div className="flex flex-wrap gap-2">
+                        {titleSuggestions.map(s => (
+                          <button 
+                            key={s} 
+                            onClick={() => setSettings({...settings, title: s})}
+                            className="text-white/40 hover:text-white/80 bg-white/[0.02] hover:bg-white/[0.05] border border-white/10 hover:border-white/30 rounded-full px-4 py-2 text-[0.75rem] tracking-widest transition-all font-serif"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+                
                 <div>
                   <p className="text-white/60 text-[0.85rem] tracking-widest mb-3 font-serif">この本の語り手</p>
                   <input className="quiet-input text-[1rem]" value={settings.author} onChange={e => setSettings({...settings, author: e.target.value})} />
                 </div>
 
-                {/* 色選択 */}
                 <div className="border-t border-white/5 pt-10">
                   <p className="text-white/60 text-xs tracking-widest mb-4">表紙の色を選ぶ</p>
                   <div className="flex gap-5">
@@ -210,12 +222,10 @@
                   </div>
                 </div>
 
-                {/* 写真選択（本文の写真から） */}
                 {photoPages.length > 0 && (
                     <div className="border-t border-white/5 pt-10 pb-4">
                         <p className="text-white/60 text-xs tracking-widest mb-4">アルバムから表紙の一枚を選ぶ</p>
                         <div className="grid grid-cols-4 md:grid-cols-5 gap-3">
-                            {/* 「写真なし」という選択肢 */}
                             <div onClick={() => setSettings({...settings, coverPhotoUrl: null})} className={`aspect-square bg-white/5 border rounded flex flex-col items-center justify-center cursor-pointer transition-all ${settings.coverPhotoUrl === null ? 'border-amber-400' : 'border-white/10 opacity-50 hover:opacity-100'}`}>
                                 <p className="text-white/40 text-[0.6rem] tracking-widest writing-vertical-rl opacity-50 font-serif">なし</p>
                             </div>
@@ -237,25 +247,14 @@
       );
     }
 
-    // ==========================================
-    // 見開きプレビュー（感情のピークを作る）
-    // ==========================================
+    // --- その他コンポーネント（PreviewView, PageDetailView, GridViewなど）はすべてそのまま ---
+
     function PreviewView({ pages, progress, settings, onBack, onNext }) {
-      // 0ページ目は「表紙」。なので pages.length + 1 とする
       const [index, setIndex] = useState(0); 
-
-      // 0番目は「表紙」、1番目から「本文（pages[0]）」を表示
-      const totalPagesInView = pages.length + 1;
-
+      const answeredPages = useMemo(() => pages.filter(p => p.is_answered), [pages]);
+      const totalPagesInView = answeredPages.length + 1;
       const handlePrev = () => setIndex(i => Math.max(0, i - 1));
       const handleNext = () => setIndex(i => Math.min(totalPagesInView - 1, i + 1));
-
-      // ページめくりの中身。回答済みのみ表示
-      const answeredPages = useMemo(() => pages.filter(p => p.is_answered), [pages]);
-
-      const shorten = (text, max = 24) => text && text.length > max ? text.slice(0, max) + "…" : text;
-
-      // 表紙の色設定
       const bookColor = BOOK_COLORS[settings.colorKey];
 
       return (
@@ -267,38 +266,24 @@
           </header>
 
           <div className="w-full flex flex-col items-center justify-center min-h-[70vh] pt-20">
-            {/* 見開きUI */}
             <div className="flex justify-center items-stretch gap-1 md:gap-2 mb-16 px-4 shrink-0 scale-90 md:scale-100 transition-transform">
-                
                 {index === 0 ? (
-                    // ▼ 0ページ目：表紙のプレビュー
                     <div className="flex justify-center items-stretch gap-1 md:gap-2 fade-enter">
-                        {/* 表紙の「静謐」案デザインをそのまま適用 */}
                         <div className={`shrink-0 w-full max-w-[280px] md:max-w-[320px] aspect-[1/1.414] ${bookColor.bg} ${bookColor.text} rounded border border-black/10 shadow-2xl flex flex-col items-center justify-between p-8 md:p-10 relative overflow-hidden book-gutter-left`}>
-                            <div className="mt-16 text-center">
-                                <h1 className="text-xl font-serif leading-relaxed px-4 tracking-wider whitespace-pre-wrap">
-                                  {settings.title}
-                                </h1>
-                            </div>
+                            <div className="mt-16 text-center"><h1 className="text-xl font-serif leading-relaxed px-4 tracking-wider whitespace-pre-wrap">{settings.title || "（タイトル未設定）"}</h1></div>
                             {settings.coverPhotoUrl ? (
                                 <img src={getDirectImageUrl(settings.coverPhotoUrl)} className="w-32 h-32 md:w-40 md:h-40 object-cover rounded opacity-80 shadow-md" alt="表紙の風景" />
                             ) : (
-                                <div className="w-32 h-32 md:w-40 md:h-40 flex items-center justify-center writing-vertical-rl text-[0.6rem] tracking-[0.4em] font-serif opacity-10">
-                                KOE BOOK
-                                </div>
+                                <div className="w-32 h-32 md:w-40 md:h-40 flex items-center justify-center writing-vertical-rl text-[0.6rem] tracking-[0.4em] font-serif opacity-10">KOE BOOK</div>
                             )}
                             <p className="text-[0.8rem] tracking-[0.3em] font-serif mb-4">{settings.author}</p>
                         </div>
-                        
-                        {/* 開いた右側：本の1ページ目（通常は空白や扉） */}
                         <div className={`w-full max-w-[280px] md:max-w-[320px] aspect-[1/1.414] ${bookColor.bg} rounded border border-black/10 shadow-2xl p-8 relative flex flex-col items-center justify-center book-gutter-right`}>
                            <p className={`${bookColor.text} opacity-10 text-[0.6rem] tracking-[0.4em] font-serif writing-vertical-rl`}>KOE BOOKS</p>
                         </div>
                     </div>
                 ) : (
-                    // ▼ 本文の見開き
                     <div className="flex justify-center items-stretch gap-1 md:gap-2 fade-enter">
-                        {/* 左ページ（写真 or 空白） */}
                         <div className="shrink-0 w-full max-w-[280px] md:max-w-[320px] aspect-[1/1.414] bg-white/[0.04] border border-white/10 rounded-l-xl shadow-2xl flex flex-col items-center justify-center p-8 relative overflow-hidden book-gutter-left">
                             {answeredPages[index-1] && answeredPages[index-1].has_photo ? (
                                 <img src={getDirectImageUrl(answeredPages[index-1].photo_url)} className="w-full h-auto max-h-full object-contain opacity-80 rounded shadow-md" alt="添えられた風景" />
@@ -306,8 +291,6 @@
                                 <p className="text-white/10 text-[0.6rem] tracking-[0.4em] font-serif writing-vertical-rl opacity-30">Page {answeredPages[index-1] ? answeredPages[index-1].sequence_order : index}</p>
                             )}
                         </div>
-
-                        {/* 右ページ（テキスト） */}
                         <div className="w-full max-w-[280px] md:max-w-[320px] aspect-[1/1.414] bg-white/[0.04] border border-white/10 rounded-r-xl shadow-2xl p-8 text-left relative flex flex-col book-gutter-right overflow-hidden">
                           {answeredPages[index-1] ? (
                             <div className="fade-enter h-full flex flex-col">
@@ -319,16 +302,13 @@
                               </div>
                             </div>
                           ) : (
-                            <div className="flex-1 flex flex-col justify-center items-center opacity-30">
-                                <p className="text-white/40 text-[0.75rem] tracking-widest font-serif text-center">KOE BOOK</p>
-                            </div>
+                            <div className="flex-1 flex flex-col justify-center items-center opacity-30"><p className="text-white/40 text-[0.75rem] tracking-widest font-serif text-center">KOE BOOK</p></div>
                           )}
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* ページめくりコントローラー */}
             <div className="flex justify-center items-center gap-12 mb-16 shrink-0">
               <button onClick={handlePrev} disabled={index === 0} className="text-white/40 hover:text-white/80 disabled:opacity-20 transition-colors tracking-widest text-sm font-serif">← 表紙</button>
               <p className="text-white/30 text-xs tracking-[0.2em] font-serif">{index === 0 ? "COV" : index} / {answeredPages.length}</p>
@@ -336,28 +316,18 @@
             </div>
           </div>
 
-          {/* 下部アクションエリア */}
           <div className="max-w-md mx-auto pt-10 border-t border-white/5">
             <p className="text-white/50 text-sm mb-12 tracking-widest leading-relaxed whitespace-pre-wrap font-serif">
-              {progress.currentIndex >= 20
-                ? "この内容で、一冊の本として十分です。"
-                : "もう少し語ると、物語はさらに深くなります。"}
+              {progress.currentIndex >= 20 ? "この内容で、一冊の本として十分です。" : "もう少し語ると、物語はさらに深くなります。"}
             </p>
             <div className="flex flex-col gap-5 items-center px-4">
-              {/* ▼ 修正：ボタン文言と完了フローへ */}
-              <button onClick={onNext} className="btn-quiet w-full py-6 rounded-xl text-white tracking-[0.2em] shadow-xl text-[1rem]">
-                この物語を、本として残す
-              </button>
-              <button onClick={onBack} className="text-white/30 hover:text-white/60 transition-colors text-sm underline underline-offset-4 tracking-widest block text-center mt-2">
-                もう少し語る（書架に戻る）
-              </button>
+              <button onClick={onNext} className="btn-quiet w-full py-6 rounded-xl text-white tracking-[0.2em] shadow-xl text-[1rem]">この物語を、本として残す</button>
+              <button onClick={() => window.location.reload()} className="text-white/30 hover:text-white/60 transition-colors text-sm underline underline-offset-4 tracking-widest block text-center mt-2">もう少し語る（書架に戻る）</button>
             </div>
           </div>
         </div>
       );
     }
-
-    // --- その他コンポーネントは既存のまま ---
 
     function GridView({ pages, onOpen, activeChapter }) {
       return (
@@ -447,9 +417,7 @@
               <p className="text-white/40 text-[0.95rem] tracking-widest mb-6 font-serif">まだ、このページは静かなままです</p>
               <p className="text-white/30 text-[0.85rem] tracking-widest italic font-serif">言葉になるときを、待っています</p>
               <div className="mt-16 flex justify-center">
-                <button onClick={() => { window.location.href = `index.html?sequence=${page.sequence_order}`; }} className="btn-quiet px-10 py-4 rounded-full tracking-widest text-sm hover:text-white hover:bg-white/[0.05] transition-all font-serif">
-                  この問いについて語る
-                </button>
+                <button onClick={() => { window.location.href = `index.html?sequence=${page.sequence_order}`; }} className="btn-quiet px-10 py-4 rounded-full tracking-widest text-sm hover:text-white hover:bg-white/[0.05] transition-all font-serif">この問いについて語る</button>
               </div>
             </div>
           )}
@@ -474,6 +442,17 @@
               )}
             </div>
           </div>
+        </div>
+      );
+    }
+
+    function FinalizeView({ progress, onBack, onProceed }) {
+      return (
+        <div className="max-w-2xl mx-auto p-10 pb-20 text-center fade-enter">
+          <h2 className="text-2xl mb-4 font-serif tracking-widest leading-loose">現在、{progress ? progress.currentIndex : 0}ページが<br/>編まれています</h2>
+          <p className="text-white/40 text-sm mb-16 tracking-widest">語られた言葉が、一冊の本になるだけの量まで積み重なっています。</p>
+          <button onClick={onProceed} className="btn-quiet w-full py-6 rounded-xl text-white text-lg shadow-xl tracking-[0.3em]">本の仕上げに進む</button>
+          <button onClick={onBack} className="mt-10 text-white/30 hover:text-white/60 transition-colors underline underline-offset-4 text-sm tracking-widest">書架に戻り、もう少し語る</button>
         </div>
       );
     }
