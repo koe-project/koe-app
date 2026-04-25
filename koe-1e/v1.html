@@ -25,12 +25,10 @@
       box-sizing: border-box; padding-top: calc(env(safe-area-inset-top) + 2rem);
       padding-bottom: calc(env(safe-area-inset-bottom) + 2rem); padding-left: 24px; padding-right: 24px;
     }
-    /* アニメーション */
     .fade-enter { animation: fadeIn 1.2s ease-out forwards; }
     .fade-enter-fast { animation: fadeIn 0.6s ease-out forwards; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     
-    /* コンポーネント装飾 */
     .btn-quiet { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.8); transition: all 0.4s ease; backdrop-filter: blur(10px); }
     .btn-quiet:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.1); }
     .btn-quiet:disabled { opacity: 0.5; pointer-events: none; }
@@ -38,8 +36,6 @@
     .glass-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; }
     input.quiet-input { background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.2); color: white; width: 100%; padding: 8px 0; outline: none; text-align: center; border-radius: 0; transition: border-color 0.3s; }
     input.quiet-input:focus { border-bottom-color: rgba(255,255,255,0.6); }
-    
-    /* iOSのスクロールとオーディオ表示調整 */
     audio { width: 100%; height: 36px; border-radius: 20px; opacity: 0.7; }
   </style>
 </head>
@@ -55,9 +51,9 @@
     const SUPABASE_ANON_KEY = "sb_publishable_0YuJ5GMOaVa4oMWHjmCGlQ_ZvuHJPvz"; // ★書き換え
     const GAS_AI_URL = "https://script.google.com/macros/s/AKfycbwz5wfVtHfGPmxpK6l3rKiqVn235sqwhmdIuPYvKSex02B_k6a5ULc-m7l_K3ig_AE/exec"; // ★書き換え
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // 【修正箇所】変数名を supabase から supabaseClient に変更し、Safariのエラーを回避
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // AI処理API(GAS)
     const askAI = async (transcriptRaw) => {
       const res = await fetch(GAS_AI_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'processAudio', transcriptRaw }) });
       const json = await res.json();
@@ -80,45 +76,39 @@
         answerId: null, storagePath: null 
       });
 
-      // アプリ初期化
       useEffect(() => {
         const initApp = async () => {
           try {
-            // マスターデータ取得
-            const { data: qList } = await supabase.from('questions').select('*').order('sequence_order', { ascending: true });
+            const { data: qList } = await supabaseClient.from('questions').select('*').order('sequence_order', { ascending: true });
             if (qList) {
               setQuestionsDB(qList);
               setProgress(p => ({ ...p, total: qList.length }));
             }
-            // セッション確認
-            const { data: { session } } = await supabase.auth.getSession();
+            const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
-              const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+              const { data: profile } = await supabaseClient.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
               setUser({ id: session.user.id, ...profile });
               setProgress(p => ({ ...p, currentIndex: (profile?.current_sequence || 1) - 1 }));
-              setScene(0); // ドア画面へ
+              setScene(0); 
             } else {
-              setScene(-1); // ログイン画面へ
+              setScene(-1); 
             }
           } catch (e) { console.error(e); } finally { setIsInitializing(false); }
         };
         initApp();
       }, []);
 
-      // 録音完了
       const handleRecordComplete = (txt, dur, url, blob) => {
         setVoiceData(prev => ({...prev, transcript: txt, duration: dur, audioUrl: url, audioBlob: blob, hasAudio: !!(blob && blob.size > 0)}));
       };
 
-      // 💾 【商用フロー】音声直送 & AI処理
       const handleVoiceProceed = async () => {
-        setScene("processing"); // 静かな処理画面へ
+        setScene("processing"); 
         try {
           const currentSeq = progress.currentIndex + 1;
           let targetAnswerId = crypto.randomUUID();
 
-          // 重複チェック：既存の回答があればそのIDを継承する（IDズレ防止）
-          const { data: existingAnswer } = await supabase
+          const { data: existingAnswer } = await supabaseClient
             .from('answers')
             .select('id')
             .match({ user_id: user.id, sequence_order: currentSeq })
@@ -126,10 +116,9 @@
           if (existingAnswer) targetAnswerId = existingAnswer.id;
 
           let path = null;
-          // 1. 音声ファイルをStorageに直送 (upsert: true で上書き許可)
           if (voiceData.hasAudio && voiceData.audioBlob) {
             path = `${user.id}/${targetAnswerId}.webm`;
-            const { error: uploadError } = await supabase.storage
+            const { error: uploadError } = await supabaseClient.storage
               .from('audio')
               .upload(path, voiceData.audioBlob, { contentType: 'audio/webm', upsert: true });
             if (uploadError) throw new Error("音声の退避に失敗しました");
@@ -137,11 +126,10 @@
 
           setVoiceData(prev => ({ ...prev, answerId: targetAnswerId, storagePath: path }));
 
-          // 2. AI処理実行
           const res = await askAI(voiceData.transcript);
           setVoiceData(prev => ({...prev, editedText: res.transcript_edited, aiMirror: res.ai_mirror_text, extractedSnippet: res.extracted_snippet}));
           
-          setScene(4); // AIミラー画面へ
+          setScene(4); 
         } catch (error) {
           console.error(error);
           alert("通信エラーが発生しました。");
@@ -149,7 +137,6 @@
         }
       };
 
-      // 💾 【最終保存】DB保存 & 進捗更新
       const handleSaveAnswer = async (tag) => {
         setIsInitializing(true);
         try {
@@ -157,8 +144,7 @@
           const currentQ = questionsDB[progress.currentIndex];
           const ansId = voiceData.answerId;
           
-          // 1. Answerをupsert保存
-          const { error: dbError } = await supabase.from('answers').upsert({
+          const { error: dbError } = await supabaseClient.from('answers').upsert({
             id: ansId,
             user_id: user.id,
             question_id: currentQ?.id,
@@ -171,9 +157,8 @@
           }, { onConflict: 'id' });
           if (dbError) throw new Error("回答の記録に失敗しました");
 
-          // 2. Media Assetをupsert保存
           if (voiceData.storagePath) {
-            await supabase.from('media_assets').upsert({
+            await supabaseClient.from('media_assets').upsert({
               answer_id: ansId,
               user_id: user.id,
               asset_type: 'audio',
@@ -181,8 +166,7 @@
             }, { onConflict: 'answer_id, asset_type, storage_path' });
           }
 
-          // 3. 進捗更新
-          await supabase.from('profiles').update({ current_sequence: currentSeq + 1 }).eq('id', user.id);
+          await supabaseClient.from('profiles').update({ current_sequence: currentSeq + 1 }).eq('id', user.id);
 
           setProgress(p => ({ ...p, currentIndex: currentSeq }));
           localStorage.setItem('koe_last_visit', Date.now().toString());
@@ -215,23 +199,26 @@
     }
 
     // ==========================================
-    // 🔐 シーン：ログイン (OTP)
+    // 🔐 シーン：ログイン
     // ==========================================
     function Scene_Login({ onLogin }) {
       const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [step, setStep] = useState(1); const [pin, setPin] = useState(""); const [loading, setLoading] = useState(false);
+      
       const handleSendPin = async () => {
         setLoading(true);
-        const { error } = await supabase.auth.signInWithOtp({ email });
+        const { error } = await supabaseClient.auth.signInWithOtp({ email });
         setLoading(false);
         if (error) alert("エラーが発生しました。"); else setStep(2);
       };
+      
       const handleVerifyPin = async () => {
         setLoading(true);
-        const { data, error } = await supabase.auth.verifyOtp({ email, token: pin, type: 'email' });
+        const { data, error } = await supabaseClient.auth.verifyOtp({ email, token: pin, type: 'email' });
         if (error) { setLoading(false); alert("コードが正しくありません。"); return; }
-        const { data: profile } = await supabase.from('profiles').upsert({ id: data.user.id, email: email, name: name }).select().single();
+        const { data: profile } = await supabaseClient.from('profiles').upsert({ id: data.user.id, email: email, name: name }).select().single();
         setLoading(false); onLogin({ id: data.user.id, ...profile });
       };
+      
       return (
         <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center">
           <p className="text-[1.1rem] text-white/90 text-narrative mb-12">この物語の持ち主を<br/>教えてください。</p>
@@ -253,7 +240,7 @@
     }
 
     // ==========================================
-    // 🌿 シーン：各種UI
+    // 🌿 各種UI
     // ==========================================
     function Scene0_Door({ onNext }) {
       return (<div className="h-full flex flex-col items-center justify-center text-center fade-enter px-4"><div className="space-y-6 mb-16 text-narrative"><p className="text-[1.1rem] text-white/90">この時間は、少し落ち着いて<br/>過ごせるときに開いてみてください</p></div><button onClick={onNext} className="btn-quiet w-full max-w-[280px] py-4 rounded-full text-sm">この時間を始める</button></div>);
