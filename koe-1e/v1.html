@@ -306,7 +306,7 @@
           const currentQ = questionsDB[progress.currentIndex];
           const ansId = voiceData.answerId || crypto.randomUUID();
 
-          const { error: dbError } = await supabaseClient
+          const { data: savedAnswer, error: dbError } = await supabaseClient
             .from('answers')
             .upsert({
               id: ansId,
@@ -321,18 +321,24 @@
                 meaning_tag: tag,
                 duration_seconds: voiceData.duration
               }
-            }, { onConflict: 'id' });
+            }, { onConflict: 'user_id,sequence_order' })
+            .select('id')
+            .single();
 
           if (dbError) {
             console.error("answers save error", dbError);
             throw new Error("回答の記録に失敗しました");
           }
 
+          const finalAnswerId = savedAnswer?.id || ansId;
+
+
+      
           if (voiceData.storagePath) {
             const { error: assetError } = await supabaseClient
               .from('media_assets')
               .upsert({
-                answer_id: ansId,
+                answer_id: finalAnswerId,
                 user_id: user.id,
                 asset_type: 'audio',
                 storage_path: voiceData.storagePath
