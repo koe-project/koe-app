@@ -13,14 +13,50 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&display=swap" rel="stylesheet">
 
   <style>
-    body { font-family:'Noto Serif JP',serif; background:#0f172a; color:#f8fafc; margin:0; height:100vh; overflow:hidden; }
-    #root { height:100%; }
-    .fade-enter { animation:fadeIn .8s ease-out forwards; }
-    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-    .glass-card { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.06); }
-    .btn-quiet { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.8); }
-    .btn-quiet:hover { background:rgba(255,255,255,.08); }
-    audio { width:100%; height:36px; opacity:.75; }
+    body {
+      font-family: 'Noto Serif JP', serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { height: 100%; }
+    .fade-enter { animation: fadeIn .8s ease-out forwards; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .glass-card {
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,255,255,.06);
+      transition: all .3s ease;
+    }
+    .glass-card:hover {
+      background: rgba(255,255,255,.045);
+      border-color: rgba(255,255,255,.12);
+    }
+    .btn-quiet {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.12);
+      color: rgba(255,255,255,.82);
+      transition: all .3s ease;
+    }
+    .btn-quiet:hover {
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.22);
+    }
+    audio {
+      width: 100%;
+      height: 36px;
+      opacity: .75;
+    }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,.12);
+      border-radius: 10px;
+    }
   </style>
 </head>
 
@@ -39,12 +75,12 @@ function KoeBookshelf() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [profile, setProfile] = useState(null);
-  const [questions, setQuestions] = useState([]);
+  const [questionSet, setQuestionSet] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [activeChapter, setActiveChapter] = useState("すべて");
   const [mode, setMode] = useState("grid");
   const [selectedSeq, setSelectedSeq] = useState(null);
-  const [activeChapter, setActiveChapter] = useState("すべて");
 
   useEffect(() => {
     loadData();
@@ -73,12 +109,47 @@ function KoeBookshelf() {
 
       if (profileError) throw profileError;
 
-      const { data: qData, error: qError } = await supabaseClient
-        .from("questions")
-        .select("*")
+      let normalizedQuestions = [];
+
+      const { data: userQuestionData, error: userQuestionError } = await supabaseClient
+        .from("user_questions")
+        .select(`
+          sequence_order,
+          is_active,
+          question_id,
+          questions (
+            id,
+            chapter,
+            content
+          )
+        `)
+        .eq("user_id", userId)
+        .eq("is_active", true)
         .order("sequence_order", { ascending: true });
 
-      if (qError) throw qError;
+      if (!userQuestionError && userQuestionData && userQuestionData.length > 0) {
+        normalizedQuestions = userQuestionData.map(row => ({
+          id: row.questions?.id || row.question_id,
+          sequence_order: row.sequence_order,
+          chapter: row.questions?.chapter || "",
+          content: row.questions?.content || ""
+        }));
+      } else {
+        const { data: qData, error: qError } = await supabaseClient
+          .from("questions")
+          .select("*")
+          .eq("is_active", true)
+          .order("sequence_order", { ascending: true });
+
+        if (qError) throw qError;
+
+        normalizedQuestions = (qData || []).map(q => ({
+          id: q.id,
+          sequence_order: q.sequence_order,
+          chapter: q.chapter,
+          content: q.content
+        }));
+      }
 
       const { data: aData, error: aError } = await supabaseClient
         .from("answers")
@@ -91,6 +162,7 @@ function KoeBookshelf() {
       const answerIds = (aData || []).map(a => a.id);
 
       let assetData = [];
+
       if (answerIds.length > 0) {
         const { data: mData, error: mError } = await supabaseClient
           .from("media_assets")
@@ -104,9 +176,14 @@ function KoeBookshelf() {
       const signedAssets = await Promise.all(assetData.map(async asset => {
         if (asset.asset_type !== "audio" || !asset.storage_path) return asset;
 
-        const { data } = await supabaseClient.storage
+        const { data, error } = await supabaseClient.storage
           .from("audio")
           .createSignedUrl(asset.storage_path, 60 * 30);
+
+        if (error) {
+          console.warn("signed url error", error);
+          return { ...asset, signed_url: null };
+        }
 
         return {
           ...asset,
@@ -115,7 +192,7 @@ function KoeBookshelf() {
       }));
 
       setProfile(profileData || { id: userId, name: "あなた", current_sequence: 1 });
-      setQuestions(qData || []);
+      setQuestionSet(normalizedQuestions);
       setAnswers(aData || []);
       setAssets(signedAssets || []);
     } catch (e) {
@@ -127,9 +204,15 @@ function KoeBookshelf() {
   };
 
   const pages = useMemo(() => {
-    return questions.map(q => {
-      const answer = answers.find(a => a.question_id === q.id || a.sequence_order === q.sequence_order);
-      const audio = answer ? assets.find(m => m.answer_id === answer.id && m.asset_type === "audio") : null;
+    return questionSet.map(q => {
+      const answer = answers.find(a =>
+        a.question_id === q.id ||
+        a.sequence_order === q.sequence_order
+      );
+
+      const audio = answer
+        ? assets.find(m => m.answer_id === answer.id && m.asset_type === "audio")
+        : null;
 
       return {
         sequence_order: q.sequence_order,
@@ -141,27 +224,44 @@ function KoeBookshelf() {
         audio,
         ai_mirror: answer?.ai_mirror || "",
         transcript_edited: answer?.transcript_edited || "",
-        snippet: answer?.snippet || ""
+        transcript_raw: answer?.transcript_raw || "",
+        snippet: answer?.snippet || "",
+        created_at: answer?.created_at || null
       };
     });
-  }, [questions, answers, assets]);
+  }, [questionSet, answers, assets]);
+
+  const chapters = useMemo(() => {
+    const unique = questionSet
+      .map(q => q.chapter)
+      .filter(Boolean);
+
+    return ["すべて", ...Array.from(new Set(unique))];
+  }, [questionSet]);
 
   const filteredPages = activeChapter === "すべて"
     ? pages
     : pages.filter(p => p.chapter === activeChapter);
 
-  const progressCount = answers.length;
-  const totalCount = questions.length || 30;
+  const progressCount = pages.filter(p => p.is_answered).length;
+  const totalCount = questionSet.length;
 
   if (loading) {
-    return <div className="h-screen flex items-center justify-center text-white/30 tracking-widest">書架を開いています...</div>;
+    return (
+      <div className="h-screen w-screen flex items-center justify-center text-white/30 text-sm tracking-widest bg-[#0f172a]">
+        書架を開いています...
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center text-center px-6">
-        <p className="text-white/50 mb-8">{error}</p>
-        <button onClick={() => location.href = "v1.html"} className="btn-quiet rounded-full px-8 py-4 text-sm">
+      <div className="h-screen w-screen flex flex-col items-center justify-center px-6 text-center bg-[#0f172a]">
+        <p className="text-white/45 mb-8 leading-loose">{error}</p>
+        <button
+          onClick={() => location.href = "v1.html"}
+          className="btn-quiet rounded-full px-8 py-4 text-sm tracking-widest"
+        >
           語るアプリを開く
         </button>
       </div>
@@ -169,43 +269,66 @@ function KoeBookshelf() {
   }
 
   return (
-    <div className="h-full flex flex-col fade-enter">
-      <header className="flex justify-between items-center px-8 py-5 border-b border-white/5">
+    <div className="h-full flex flex-col bg-[#0f172a] text-white overflow-hidden fade-enter">
+      <header className="flex justify-between items-center px-6 md:px-10 py-5 border-b border-white/5 bg-white/[0.01] shrink-0">
         <div>
-          <p className="text-white/50 text-xs tracking-widest mb-1">{profile?.name || "あなた"}さんの物語</p>
-          <p className="text-white/90 text-sm">{progressCount} / {totalCount} ページ</p>
+          <p className="text-white/50 text-xs tracking-widest mb-1">
+            {profile?.name || "あなた"}さんの物語
+          </p>
+          <p className="text-white/90 text-sm font-serif">
+            {progressCount} / {totalCount} ページ
+          </p>
         </div>
-        <button onClick={() => location.href = "v1.html"} className="btn-quiet rounded-full px-6 py-3 text-xs tracking-widest">
+
+        <button
+          onClick={() => location.href = "v1.html"}
+          className="btn-quiet rounded-full px-6 py-3 text-xs tracking-widest"
+        >
           続きを語る
         </button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-56 border-r border-white/5 p-6 hidden md:block">
-          {["すべて", "思い出す", "積み重ねる", "関係性", "手渡す"].map(c => (
-            <button
-              key={c}
-              onClick={() => { setActiveChapter(c); setMode("grid"); }}
-              className={`block w-full text-left py-3 px-4 rounded-md text-sm ${activeChapter === c ? "bg-white/[0.07] text-white/80" : "text-white/40"}`}
-            >
-              {c}
-            </button>
-          ))}
+        <aside className="w-64 border-r border-white/5 p-6 md:p-8 bg-white/[0.005] shrink-0 hidden md:block">
+          <div className="space-y-1">
+            {chapters.map(c => (
+              <button
+                key={c}
+                onClick={() => {
+                  setActiveChapter(c);
+                  setMode("grid");
+                }}
+                className={`block w-full text-left py-3 px-4 rounded-md text-[0.85rem] transition-all ${
+                  activeChapter === c
+                    ? "bg-white/[0.07] text-white/85"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/[0.03]"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto bg-[#0d1321]">
+        <main className="flex-1 overflow-y-auto relative bg-[#0d1321]">
           {mode === "grid" && (
             <GridView
               pages={filteredPages}
               activeChapter={activeChapter}
-              onOpen={(seq) => { setSelectedSeq(seq); setMode("page"); }}
+              onOpen={(seq) => {
+                setSelectedSeq(seq);
+                setMode("page");
+              }}
             />
           )}
 
           {mode === "page" && (
             <PageDetail
               page={pages.find(p => p.sequence_order === selectedSeq)}
+              pages={pages}
+              selectedSeq={selectedSeq}
               onBack={() => setMode("grid")}
+              onNavigate={setSelectedSeq}
             />
           )}
         </main>
@@ -216,26 +339,38 @@ function KoeBookshelf() {
 
 function GridView({ pages, activeChapter, onOpen }) {
   return (
-    <div className="max-w-5xl mx-auto p-8 pb-20">
-      <h2 className="text-2xl text-white/90 tracking-widest mb-8">{activeChapter}</h2>
+    <div className="max-w-6xl mx-auto p-8 md:p-10 pb-24">
+      <h2 className="text-2xl text-white/90 tracking-widest font-serif mb-10">
+        {activeChapter}
+      </h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {pages.map(p => (
           <div
             key={p.sequence_order}
             onClick={() => onOpen(p.sequence_order)}
-            className={`glass-card p-6 rounded-xl h-56 cursor-pointer ${p.is_answered ? "" : "opacity-40"}`}
+            className={`glass-card p-6 rounded-xl flex flex-col h-56 relative overflow-hidden cursor-pointer group ${
+              p.is_answered ? "" : "opacity-40 hover:opacity-65"
+            }`}
           >
-            <div className="flex justify-between mb-4">
-              <p className="text-white/35 text-xs tracking-widest">PAGE {p.sequence_order}</p>
-              <span className={`w-2 h-2 rounded-full ${p.is_answered ? "bg-white/50" : "border border-white/30"}`}></span>
+            <div className="flex justify-between items-start mb-5">
+              <p className="text-[0.65rem] text-white/35 font-serif tracking-[0.2em]">
+                PAGE {p.sequence_order}
+              </p>
+              <div className={`rounded-full ${
+                p.is_answered
+                  ? "w-2 h-2 bg-white/50 shadow-[0_0_8px_rgba(255,255,255,0.25)]"
+                  : "w-2 h-2 border border-white/25"
+              }`}></div>
             </div>
 
-            <p className="text-white/70 text-sm leading-loose line-clamp-4">
-              {p.is_answered ? (p.snippet || p.transcript_edited || "語りが保存されています") : "まだ、このページは静かなままです"}
+            <p className="text-[0.95rem] leading-[1.8] text-white/65 line-clamp-4 flex-1 font-serif transition-colors group-hover:text-white/85">
+              {p.is_answered
+                ? (p.snippet || p.transcript_edited || "語りが保存されています")
+                : "まだ、このページは静かなままです"}
             </p>
 
-            <p className="text-white/35 text-xs mt-5 line-clamp-2">
+            <p className="text-[0.75rem] text-white/35 truncate mt-5 tracking-widest">
               {p.question_text}
             </p>
           </div>
@@ -245,43 +380,113 @@ function GridView({ pages, activeChapter, onOpen }) {
   );
 }
 
-function PageDetail({ page, onBack }) {
+function PageDetail({ page, pages, selectedSeq, onBack, onNavigate }) {
   if (!page) return null;
 
-  return (
-    <div className="max-w-3xl mx-auto p-8 pb-20 fade-enter">
-      <button onClick={onBack} className="text-white/35 mb-10 text-sm tracking-widest">← 書架に戻る</button>
+  const pageIndex = pages.findIndex(p => p.sequence_order === selectedSeq);
+  const prevPage = pageIndex > 0 ? pages[pageIndex - 1] : null;
+  const nextPage = pageIndex < pages.length - 1 ? pages[pageIndex + 1] : null;
 
-      <p className="text-white/30 text-xs tracking-[0.3em] mb-4 text-center">PAGE {page.sequence_order}</p>
-      <h1 className="text-white/80 text-xl leading-loose text-center mb-12">{page.question_text}</h1>
+  const shorten = (text, max = 26) => {
+    if (!text) return "";
+    return text.length > max ? text.slice(0, max) + "…" : text;
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto p-8 md:p-10 pb-24 fade-enter">
+      <button
+        onClick={onBack}
+        className="mb-10 text-white/35 hover:text-white/70 text-sm tracking-widest transition-colors"
+      >
+        ← 書架に戻る
+      </button>
+
+      <div className="text-center mb-12">
+        <p className="text-white/30 text-xs tracking-[0.3em] font-serif mb-4">
+          PAGE {page.sequence_order}
+        </p>
+        <h1 className="text-xl text-white/75 font-serif leading-loose px-4 whitespace-pre-wrap">
+          {page.question_text}
+        </h1>
+      </div>
 
       {page.is_answered ? (
-        <>
-          <div className="mb-10 p-5 bg-white/[0.04] border-l-2 border-amber-500/50 rounded-r-lg">
-            <p className="text-amber-50/90 text-sm tracking-widest leading-loose">
+        <div className="fade-enter">
+          <div className="mb-10 p-6 bg-white/[0.04] border-l-2 border-amber-500/50 rounded-r-lg shadow-sm">
+            <p className="text-amber-50/90 text-[0.95rem] italic tracking-widest leading-relaxed font-serif">
               {page.ai_mirror || "ひとつの時間が、形になっています"}
             </p>
           </div>
 
-          <p className="text-white/85 text-[1.05rem] leading-[2.4] whitespace-pre-wrap mb-10">
-            {page.transcript_edited || "（本文はまだありません）"}
+          <p className="text-white/90 text-[1.05rem] leading-[2.4] font-serif whitespace-pre-wrap mb-12">
+            {page.transcript_edited || page.transcript_raw || "（本文はまだありません）"}
           </p>
 
           {page.audio?.signed_url && (
-            <div className="glass-card rounded-xl p-5">
-              <p className="text-white/35 text-xs tracking-widest mb-3">ORIGINAL VOICE</p>
+            <div className="glass-card rounded-xl p-5 mb-12">
+              <p className="text-white/35 text-xs tracking-widest mb-3">
+                ORIGINAL VOICE
+              </p>
               <audio controls src={page.audio.signed_url}></audio>
             </div>
           )}
-        </>
+        </div>
       ) : (
-        <div className="text-center py-20">
-          <p className="text-white/40 mb-10">まだ、このページは静かなままです。</p>
-          <button onClick={() => location.href = "v1.html"} className="btn-quiet rounded-full px-8 py-4 text-sm">
+        <div className="text-center py-20 fade-enter">
+          <p className="text-white/40 text-[0.95rem] tracking-widest mb-6 font-serif">
+            まだ、このページは静かなままです。
+          </p>
+          <p className="text-white/30 text-[0.85rem] tracking-widest italic font-serif mb-14">
+            言葉になるときを、待っています。
+          </p>
+          <button
+            onClick={() => location.href = "v1.html"}
+            className="btn-quiet px-10 py-4 rounded-full tracking-widest text-sm"
+          >
             この問いについて語る
           </button>
         </div>
       )}
+
+      <div className="mt-20 pt-8 border-t border-white/10 grid grid-cols-2 gap-8">
+        <div>
+          {prevPage && (
+            <button
+              onClick={() => onNavigate(prevPage.sequence_order)}
+              className="w-full text-left px-4 py-4 rounded-xl hover:bg-white/[0.03] transition-colors group"
+            >
+              <p className="text-white/30 text-[0.65rem] tracking-[0.2em] font-serif mb-2 group-hover:text-white/50">
+                前のページ
+              </p>
+              <p className="text-white/70 text-[0.9rem] tracking-widest font-serif mb-1 group-hover:text-white/90">
+                PAGE {prevPage.sequence_order}
+              </p>
+              <p className="text-white/40 text-[0.75rem] tracking-widest group-hover:text-white/60">
+                {shorten(prevPage.question_text)}
+              </p>
+            </button>
+          )}
+        </div>
+
+        <div>
+          {nextPage && (
+            <button
+              onClick={() => onNavigate(nextPage.sequence_order)}
+              className="w-full text-right px-4 py-4 rounded-xl hover:bg-white/[0.03] transition-colors group flex flex-col items-end"
+            >
+              <p className="text-white/30 text-[0.65rem] tracking-[0.2em] font-serif mb-2 group-hover:text-white/50">
+                次のページ
+              </p>
+              <p className="text-white/70 text-[0.9rem] tracking-widest font-serif mb-1 group-hover:text-white/90">
+                PAGE {nextPage.sequence_order}
+              </p>
+              <p className="text-white/40 text-[0.75rem] tracking-widest group-hover:text-white/60">
+                {shorten(nextPage.question_text)}
+              </p>
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
