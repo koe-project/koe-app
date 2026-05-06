@@ -71,6 +71,93 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+function normalizeUserQuestions(rows) {
+  return (rows || []).map(row => ({
+    id: row.questions?.id || row.question_id,
+    sequence_order: row.sequence_order,
+    content: row.questions?.content || "",
+    chapter_id: row.questions?.chapters?.id || row.questions?.chapter_id || null,
+    chapter_label: row.questions?.chapters?.label || row.questions?.chapter || "",
+    chapter_description: row.questions?.chapters?.description || row.questions?.chapter || "",
+    chapter_order: row.questions?.chapters?.display_order || 999
+  }));
+}
+
+async function loadUserQuestionSet(userId) {
+  const { data: uqData, error: uqError } = await supabaseClient
+    .from("user_questions")
+    .select(`
+      sequence_order,
+      is_active,
+      question_id,
+      questions (
+        id,
+        content,
+        chapter,
+        chapter_id,
+        chapters (
+          id,
+          label,
+          description,
+          display_order
+        )
+      )
+    `)
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .order("sequence_order", { ascending: true });
+
+  if (!uqError && uqData && uqData.length > 0) {
+    return normalizeUserQuestions(uqData);
+  }
+
+  const { data: qData, error: qError } = await supabaseClient
+    .from("questions")
+    .select(`
+      id,
+      content,
+      chapter,
+      chapter_id,
+      sequence_order,
+      is_active,
+      chapters (
+        id,
+        label,
+        description,
+        display_order
+      )
+    `)
+    .eq("is_active", true)
+    .order("sequence_order", { ascending: true });
+
+  if (qError) throw qError;
+
+  const questions = qData || [];
+
+  if (questions.length > 0) {
+    const inserts = questions.map(q => ({
+      user_id: userId,
+      question_id: q.id,
+      sequence_order: q.sequence_order,
+      is_active: true
+    }));
+
+    await supabaseClient
+      .from("user_questions")
+      .upsert(inserts, { onConflict: "user_id,question_id" });
+  }
+
+  return questions.map(q => ({
+    id: q.id,
+    sequence_order: q.sequence_order,
+    content: q.content,
+    chapter_id: q.chapters?.id || q.chapter_id || null,
+    chapter_label: q.chapters?.label || q.chapter || "",
+    chapter_description: q.chapters?.description || q.chapter || "",
+    chapter_order: q.chapters?.display_order || 999
+  }));
+}
+
 function KoeBookshelf() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -78,7 +165,7 @@ function KoeBookshelf() {
   const [questionSet, setQuestionSet] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [assets, setAssets] = useState([]);
-  const [activeChapter, setActiveChapter] = useState("すべて");
+  const [activeChapterId, setActiveChapterId] = useState("all");
   const [mode, setMode] = useState("grid");
   const [selectedSeq, setSelectedSeq] = useState(null);
 
@@ -109,47 +196,7 @@ function KoeBookshelf() {
 
       if (profileError) throw profileError;
 
-      let normalizedQuestions = [];
-
-      const { data: userQuestionData, error: userQuestionError } = await supabaseClient
-        .from("user_questions")
-        .select(`
-          sequence_order,
-          is_active,
-          question_id,
-          questions (
-            id,
-            chapter,
-            content
-          )
-        `)
-        .eq("user_id", userId)
-        .eq("is_active", true)
-        .order("sequence_order", { ascending: true });
-
-      if (!userQuestionError && userQuestionData && userQuestionData.length > 0) {
-        normalizedQuestions = userQuestionData.map(row => ({
-          id: row.questions?.id || row.question_id,
-          sequence_order: row.sequence_order,
-          chapter: row.questions?.chapter || "",
-          content: row.questions?.content || ""
-        }));
-      } else {
-        const { data: qData, error: qError } = await supabaseClient
-          .from("questions")
-          .select("*")
-          .eq("is_active", true)
-          .order("sequence_order", { ascending: true });
-
-        if (qError) throw qError;
-
-        normalizedQuestions = (qData || []).map(q => ({
-          id: q.id,
-          sequence_order: q.sequence_order,
-          chapter: q.chapter,
-          content: q.content
-        }));
-      }
+      const normalizedQuestions = await loadUserQuestionSet(userId);
 
       const { data: aData, error: aError } = await supabaseClient
         .from("answers")
@@ -216,7 +263,10 @@ function KoeBookshelf() {
 
       return {
         sequence_order: q.sequence_order,
-        chapter: q.chapter,
+        chapter_id: q.chapter_id,
+        chapter_label: q.chapter_label,
+        chapter_description: q.chapter_description,
+        chapter_order: q.chapter_order,
         question_id: q.id,
         question_text: q.content,
         is_answered: !!answer,
@@ -232,16 +282,34 @@ function KoeBookshelf() {
   }, [questionSet, answers, assets]);
 
   const chapters = useMemo(() => {
-    const unique = questionSet
-      .map(q => q.chapter)
-      .filter(Boolean);
+    const map = new Map();
 
-    return ["すべて", ...Array.from(new Set(unique))];
+    questionSet.forEach(q => {
+      const id = q.chapter_id || q.chapter_label || "uncategorized";
+      if (!map.has(id)) {
+        map.set(id, {
+          id,
+          label: q.chapter_label || "未分類",
+          description: q.chapter_description || "",
+          order: q.chapter_order || 999
+        });
+      }
+    });
+
+    const sorted = Array.from(map.values())
+      .sort((a, b) => a.order - b.order);
+
+    return [
+      { id: "all", label: "すべて", description: "" },
+      ...sorted
+    ];
   }, [questionSet]);
 
-  const filteredPages = activeChapter === "すべて"
+  const activeChapter = chapters.find(c => c.id === activeChapterId) || chapters[0];
+
+  const filteredPages = activeChapterId === "all"
     ? pages
-    : pages.filter(p => p.chapter === activeChapter);
+    : pages.filter(p => (p.chapter_id || p.chapter_label || "uncategorized") === activeChapterId);
 
   const progressCount = pages.filter(p => p.is_answered).length;
   const totalCount = questionSet.length;
@@ -293,18 +361,18 @@ function KoeBookshelf() {
           <div className="space-y-1">
             {chapters.map(c => (
               <button
-                key={c}
+                key={c.id}
                 onClick={() => {
-                  setActiveChapter(c);
+                  setActiveChapterId(c.id);
                   setMode("grid");
                 }}
                 className={`block w-full text-left py-3 px-4 rounded-md text-[0.85rem] transition-all ${
-                  activeChapter === c
+                  activeChapterId === c.id
                     ? "bg-white/[0.07] text-white/85"
                     : "text-white/40 hover:text-white/70 hover:bg-white/[0.03]"
                 }`}
               >
-                {c}
+                {c.label}
               </button>
             ))}
           </div>
@@ -340,9 +408,16 @@ function KoeBookshelf() {
 function GridView({ pages, activeChapter, onOpen }) {
   return (
     <div className="max-w-6xl mx-auto p-8 md:p-10 pb-24">
-      <h2 className="text-2xl text-white/90 tracking-widest font-serif mb-10">
-        {activeChapter}
-      </h2>
+      <div className="mb-10">
+        <h2 className="text-2xl text-white/90 tracking-widest font-serif mb-3">
+          {activeChapter?.label || "すべて"}
+        </h2>
+        {activeChapter?.description && (
+          <p className="text-white/35 text-sm tracking-widest leading-loose">
+            {activeChapter.description}
+          </p>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {pages.map(p => (
@@ -402,8 +477,11 @@ function PageDetail({ page, pages, selectedSeq, onBack, onNavigate }) {
       </button>
 
       <div className="text-center mb-12">
-        <p className="text-white/30 text-xs tracking-[0.3em] font-serif mb-4">
+        <p className="text-white/30 text-xs tracking-[0.3em] font-serif mb-3">
           PAGE {page.sequence_order}
+        </p>
+        <p className="text-white/35 text-xs tracking-widest mb-4">
+          {page.chapter_description || page.chapter_label}
         </p>
         <h1 className="text-xl text-white/75 font-serif leading-loose px-4 whitespace-pre-wrap">
           {page.question_text}
