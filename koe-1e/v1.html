@@ -1253,6 +1253,12 @@ function Scene_NotificationSetup({ user, onComplete }) {
   const [time, setTime] = useState("20:00");
 
   const [loading, setLoading] = useState(false);
+  const timeOptions = [];
+
+  for (let h = 5; h <= 23; h++) {
+    timeOptions.push(`${String(h).padStart(2, "0")}:00`);
+    timeOptions.push(`${String(h).padStart(2, "0")}:30`); 
+  }
 
   async function savePreference() {
 
@@ -1262,12 +1268,15 @@ function Scene_NotificationSetup({ user, onComplete }) {
 
       let finalWeekday;
       let finalHour;
+      let finalMinute = 0;
 
       if (customMode) {
 
         finalWeekday = weekday;
 
-        finalHour = Number(time.split(":")[0]);
+        const [h, m] = time.split(":").map(Number);
+        finalHour = h;  
+        finalMinute = m;
 
       } else {
 
@@ -1278,21 +1287,23 @@ function Scene_NotificationSetup({ user, onComplete }) {
 
         finalWeekday = selectedPreset.weekday;
         finalHour = selectedPreset.hour;
+        finalMinute = selectedPreset.minute || 0;
       }
     
       const { error } = await supabaseClient
-        .from("notification_preferences")
-        .upsert({
-          user_id: user.id,
-          email_enabled: true,
-          line_enabled: false,
-          weekday: finalWeekday,
-          hour: finalHour,
-          timezone: "Asia/Tokyo",
-          delivery_channel: "email"
-        }, {
-          onConflict: "user_id"
-        });
+       .from("notification_preferences")
+       .upsert({
+         user_id: user.id,
+         email_enabled: true,
+         line_enabled: false,
+         weekday: finalWeekday,
+         hour: finalHour,
+         minute: finalMinute,
+         timezone: "Asia/Tokyo",
+         delivery_channel: "email"
+       }, {
+         onConflict: "user_id"
+       });
 
       if (error) {
         throw error;
@@ -1406,12 +1417,17 @@ function Scene_NotificationSetup({ user, onComplete }) {
               問いが届く時間
             </p>
 
-            <input
-              type="time"
-              value={time}
-              onChange={e => setTime(e.target.value)}
-              className="quiet-input max-w-[180px] mx-auto text-center"
-            />
+          <select
+            value={time}
+            onChange={e => setTime(e.target.value)}
+            className="quiet-input max-w-[180px] mx-auto text-center"
+          >
+            {timeOptions.map(t => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
 
           </div>
 
