@@ -1,3 +1,8 @@
+<!-- ==========================================
+Koe BOOK - v1.html
+user_questions対応版（Step2）
+========================================== -->
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -9,89 +14,92 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500&display=swap" rel="stylesheet">
 
   <style>
     body {
       font-family: 'Noto Serif JP', serif;
       margin: 0;
-      padding: 0;
-      background-color: #0f172a;
-      color: #f8fafc;
+      background: #0f172a;
+      color: white;
+      overflow: hidden;
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      overscroll-behavior: none;
+      inset: 0;
       -webkit-font-smoothing: antialiased;
-      transition: background-color 2s ease;
     }
-    body.is-recording { background-color: #15203b; }
-    #root { height: 100%; width: 100%; overflow: hidden; }
+
+    #root {
+      height: 100%;
+    }
+
+    .fade-enter {
+      animation: fadeIn 1s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .btn-quiet {
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.1);
+      color: rgba(255,255,255,.85);
+      transition: .3s;
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-quiet:active {
+      transform: scale(.98);
+    }
+
+    .glass-card {
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.05);
+      border-radius: 16px;
+    }
+
+    .quiet-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid rgba(255,255,255,.2);
+      color: white;
+      width: 100%;
+      padding: 8px 0;
+      text-align: center;
+      outline: none;
+      font-size: 16px;
+    }
+
+    .text-narrative {
+      line-height: 2.3;
+      letter-spacing: .08em;
+    }
+
     .app-container {
       display: flex;
       flex-direction: column;
       height: 100%;
       max-width: 600px;
       margin: 0 auto;
-      position: relative;
+      padding:
+        calc(env(safe-area-inset-top) + 2rem)
+        24px
+        calc(env(safe-area-inset-bottom) + 2rem);
       box-sizing: border-box;
-      padding-top: calc(env(safe-area-inset-top) + 2rem);
-      padding-bottom: calc(env(safe-area-inset-bottom) + 2rem);
-      padding-left: 24px;
-      padding-right: 24px;
     }
-    .fade-enter { animation: fadeIn 1.2s ease-out forwards; }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .btn-quiet {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.8);
-      transition: all 0.4s ease;
-      backdrop-filter: blur(10px);
-    }
-    .btn-quiet:active {
-      transform: scale(0.98);
-      background: rgba(255, 255, 255, 0.1);
-    }
-    .btn-quiet:disabled {
-      opacity: 0.5;
-      pointer-events: none;
-    }
-    .text-narrative {
-      line-height: 2.4;
-      letter-spacing: 0.08em;
-    }
-    .glass-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 16px;
-    }
-    input.quiet-input {
-      background: transparent;
-      border: none;
-      border-bottom: 1px solid rgba(255,255,255,0.2);
-      color: white;
-      width: 100%;
-      padding: 8px 0;
-      outline: none;
-      text-align: center;
-      border-radius: 0;
-      transition: border-color 0.3s;
-    }
-    input.quiet-input:focus {
-      border-bottom-color: rgba(255,255,255,0.6);
-    }
+
     audio {
       width: 100%;
-      height: 36px;
-      border-radius: 20px;
-      opacity: 0.7;
+      opacity: .8;
     }
   </style>
 </head>
@@ -99,123 +107,60 @@
 <body>
 <div id="root"></div>
 
-<script type="text/babel" data-presets="react">
+<script type="text/babel">
+
 const { useState, useEffect, useRef } = React;
 
 const SUPABASE_URL = "https://wquxjeqkumossjxehdop.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxdXhqZXFrdW1vc3NqeGVoZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTEyMjksImV4cCI6MjA5MjU4NzIyOX0.wImRfRH2cr-w1uh2_c3vSS0_t4pHDeRWmWHZre1WbT4";
-const GAS_AI_URL = "https://script.google.com/macros/s/AKfycbwz5wfVtHfGPmxpK6l3rKiqVn235sqwhmdIuPYvKSex02B_k6a5ULc-m7l_K3ig_AE/exec";
+const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";
+const GAS_AI_URL = "YOUR_GAS_URL";
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
 
-const askAI = async (transcriptRaw) => {
+async function askAI(transcriptRaw) {
   const res = await fetch(GAS_AI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ action: 'processAudio', transcriptRaw })
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain"
+    },
+    body: JSON.stringify({
+      action: "processAudio",
+      transcriptRaw
+    })
   });
+
   const json = await res.json();
-  if (!json.success) throw new Error(json.error);
+
+  if (!json.success) {
+    throw new Error(json.error);
+  }
+
   return json.data;
-};
-
-function normalizeUserQuestions(rows) {
-  return (rows || []).map(row => ({
-    id: row.questions?.id || row.question_id,
-    sequence_order: row.sequence_order,
-    content: row.questions?.content || "",
-    chapter_id: row.questions?.chapters?.id || row.questions?.chapter_id || null,
-    chapter_label: row.questions?.chapters?.label || row.questions?.chapter || "",
-    chapter_description: row.questions?.chapters?.description || row.questions?.chapter || ""
-  }));
-}
-
-async function loadUserQuestionSet(userId) {
-  const { data: uqData, error: uqError } = await supabaseClient
-    .from("user_questions")
-    .select(`
-      sequence_order,
-      is_active,
-      question_id,
-      questions (
-        id,
-        content,
-        chapter,
-        chapter_id,
-        chapters (
-          id,
-          label,
-          description,
-          display_order
-        )
-      )
-    `)
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .order("sequence_order", { ascending: true });
-
-  if (!uqError && uqData && uqData.length > 0) {
-    return normalizeUserQuestions(uqData);
-  }
-
-  const { data: qData, error: qError } = await supabaseClient
-    .from("questions")
-    .select(`
-      id,
-      content,
-      chapter,
-      chapter_id,
-      sequence_order,
-      is_active,
-      chapters (
-        id,
-        label,
-        description,
-        display_order
-      )
-    `)
-    .eq("is_active", true)
-    .order("sequence_order", { ascending: true });
-
-  if (qError) throw qError;
-
-  const questions = qData || [];
-
-  if (questions.length > 0) {
-    const inserts = questions.map(q => ({
-      user_id: userId,
-      question_id: q.id,
-      sequence_order: q.sequence_order,
-      is_active: true
-    }));
-
-    await supabaseClient
-      .from("user_questions")
-      .upsert(inserts, { onConflict: "user_id,question_id" });
-  }
-
-  return questions.map(q => ({
-    id: q.id,
-    sequence_order: q.sequence_order,
-    content: q.content,
-    chapter_id: q.chapters?.id || q.chapter_id || null,
-    chapter_label: q.chapters?.label || q.chapter || "",
-    chapter_description: q.chapters?.description || q.chapter || ""
-  }));
 }
 
 function App() {
-  const [isInitializing, setIsInitializing] = useState(true);
+
+  const [loading, setLoading] = useState(true);
+
   const [scene, setScene] = useState(-1);
+
   const [user, setUser] = useState(null);
+
   const [questionsDB, setQuestionsDB] = useState([]);
-  const [progress, setProgress] = useState({ currentIndex: 0, total: 0 });
+
+  const [progress, setProgress] = useState({
+    currentIndex: 0,
+    total: 0
+  });
+
   const [voiceData, setVoiceData] = useState({
-    duration: 0,
     transcript: "",
-    audioUrl: null,
-    hasAudio: false,
+    duration: 0,
     audioBlob: null,
+    audioUrl: null,
     editedText: "",
     aiMirror: "",
     extractedSnippet: "",
@@ -224,173 +169,174 @@ function App() {
   });
 
   useEffect(() => {
-    const initApp = async () => {
-      try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-
-        if (!session) {
-          setScene(-1);
-          return;
-        }
-
-        const { data: profile } = await supabaseClient
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .maybeSingle();
-
-        const currentUser = {
-          id: session.user.id,
-          ...profile,
-          name: profile?.name || "あなた"
-        };
-
-        const questionSet = await loadUserQuestionSet(session.user.id);
-
-        const storedSeq = profile?.current_sequence || questionSet[0]?.sequence_order || 1;
-        let currentIndex = questionSet.findIndex(q => q.sequence_order >= storedSeq);
-        if (currentIndex < 0) currentIndex = Math.max(questionSet.length - 1, 0);
-
-        setUser(currentUser);
-        setQuestionsDB(questionSet);
-        setProgress({ currentIndex, total: questionSet.length });
-        setScene(0);
-      } catch (e) {
-        console.error("init error", e);
-        setScene(-1);
-      } finally {
-        setIsInitializing(false);
-      }
-    };
-
-    initApp();
+    init();
   }, []);
 
-  const resetVoiceData = () => {
-    setVoiceData({
-      duration: 0,
-      transcript: "",
-      audioUrl: null,
-      hasAudio: false,
-      audioBlob: null,
-      editedText: "",
-      aiMirror: "",
-      extractedSnippet: "",
-      answerId: null,
-      storagePath: null
-    });
-  };
-
-  const handleRecordComplete = (txt, dur, url, blob) => {
-    console.log("recorded blob", {
-      type: blob?.type,
-      size: blob?.size,
-      duration: dur,
-      transcript: txt
-    });
-
-    setVoiceData(prev => ({
-      ...prev,
-      transcript: txt,
-      duration: dur,
-      audioUrl: url,
-      audioBlob: blob,
-      hasAudio: !!(blob && blob.size > 0)
-    }));
-  };
-
-  const handleVoiceProceed = async () => {
-    setScene("processing");
+  async function init() {
 
     try {
-      const currentQ = questionsDB[progress.currentIndex];
-      const currentSeq = currentQ?.sequence_order;
-      let targetAnswerId = crypto.randomUUID();
 
-      const { data: existingAnswer } = await supabaseClient
-        .from('answers')
-        .select('id')
-        .match({ user_id: user.id, sequence_order: currentSeq })
+      const {
+        data: { session }
+      } = await supabaseClient.auth.getSession();
+
+      if (!session) {
+        setScene(-1);
+        setLoading(false);
+        return;
+      }
+
+      const userId = session.user.id;
+
+      const {
+        data: profile
+      } = await supabaseClient
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
         .maybeSingle();
 
-      if (existingAnswer) targetAnswerId = existingAnswer.id;
+      setUser({
+        id: userId,
+        ...profile
+      });
 
-      let path = null;
+      // ==========================================
+      // user_questions を取得
+      // ==========================================
 
-      if (voiceData.hasAudio && voiceData.audioBlob) {
-        const contentType = voiceData.audioBlob.type || "audio/mp4";
-        const ext = contentType.includes("mp4")
-          ? "mp4"
-          : contentType.includes("aac")
-            ? "aac"
-            : "webm";
+      const {
+        data: userQuestions,
+        error: uqError
+      } = await supabaseClient
+        .from("user_questions")
+        .select(`
+          id,
+          sequence_order,
+          chapter,
+          custom_question_text,
+          question_id,
+          questions (
+            id,
+            content,
+            chapter
+          )
+        `)
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .order("sequence_order", { ascending: true });
 
-        path = `${user.id}/${targetAnswerId}.${ext}`;
-
-        const { error: uploadError } = await supabaseClient.storage
-          .from('audio')
-          .upload(path, voiceData.audioBlob, {
-            contentType,
-            upsert: true
-          });
-
-        if (uploadError) {
-          console.error("storage upload error", uploadError);
-          throw new Error("音声の退避に失敗しました");
-        }
+      if (uqError) {
+        console.error(uqError);
+        throw uqError;
       }
 
-      setVoiceData(prev => ({
-        ...prev,
-        answerId: targetAnswerId,
-        storagePath: path
+      const normalized = (userQuestions || []).map(q => ({
+        user_question_id: q.id,
+        question_id: q.question_id,
+        sequence_order: q.sequence_order,
+        chapter:
+          q.chapter ||
+          q.questions?.chapter ||
+          "",
+        content:
+          q.custom_question_text ||
+          q.questions?.content ||
+          ""
       }));
 
-      let aiResult;
+      setQuestionsDB(normalized);
 
-      try {
-        aiResult = await askAI(voiceData.transcript);
-      } catch (e) {
-        console.error("AI error", e);
-        const raw = String(voiceData.transcript || '').trim();
-        aiResult = {
-          transcript_edited: raw || "（音声が認識されませんでした）",
-          ai_mirror_text: "ひとつの時間が、形になっています",
-          extracted_snippet: raw
-            ? `「${raw.slice(0, 45)}${raw.length > 45 ? '…' : ''}」`
-            : "「静かな時間が流れていました」"
-        };
-      }
+      setProgress({
+        currentIndex: (profile?.current_sequence || 1) - 1,
+        total: normalized.length
+      });
 
-      setVoiceData(prev => ({
-        ...prev,
-        editedText: aiResult.transcript_edited,
-        aiMirror: aiResult.ai_mirror_text,
-        extractedSnippet: aiResult.extracted_snippet
-      }));
+      setScene(0);
 
-      setScene(4);
-    } catch (error) {
-      console.error(error);
-      alert("通信エラーが発生しました。");
-      setScene(3.5);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  const handleSaveAnswer = async (tag) => {
-    setIsInitializing(true);
+  async function initializeUserQuestions(userId) {
+
+    const {
+      data: existing
+    } = await supabaseClient
+      .from("user_questions")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      return;
+    }
+
+    const {
+      data: masterQuestions,
+      error
+    } = await supabaseClient
+      .from("questions")
+      .select("*")
+      .eq("is_active", true)
+      .order("sequence_order", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const inserts = masterQuestions.map((q, index) => ({
+      user_id: userId,
+      question_id: q.id,
+      sequence_order: index + 1,
+      chapter: q.chapter,
+      is_active: true
+    }));
+
+    const { error: insertError } = await supabaseClient
+      .from("user_questions")
+      .insert(inserts);
+
+    if (insertError) {
+      console.error(insertError);
+    }
+  }
+
+  async function handleLogin(userObj) {
+
+    await initializeUserQuestions(userObj.id);
+
+    setUser(userObj);
+
+    await init();
+  }
+
+  async function handleSaveAnswer(tag) {
 
     try {
-      const currentQ = questionsDB[progress.currentIndex];
-      const currentSeq = currentQ?.sequence_order;
-      const ansId = voiceData.answerId || crypto.randomUUID();
 
-      const { data: savedAnswer, error: dbError } = await supabaseClient
-        .from('answers')
+      setLoading(true);
+
+      const currentSeq = progress.currentIndex + 1;
+
+      const currentQ = questionsDB[progress.currentIndex];
+
+      const answerId =
+        voiceData.answerId ||
+        crypto.randomUUID();
+
+      const {
+        error: answerError
+      } = await supabaseClient
+        .from("answers")
         .upsert({
-          id: ansId,
+          id: answerId,
           user_id: user.id,
-          question_id: currentQ?.id,
+          question_id: currentQ.question_id,
           sequence_order: currentSeq,
           transcript_raw: voiceData.transcript,
           transcript_edited: voiceData.editedText,
@@ -400,480 +346,544 @@ function App() {
             meaning_tag: tag,
             duration_seconds: voiceData.duration
           }
-        }, { onConflict: 'user_id,sequence_order' })
-        .select('id')
-        .single();
+        }, {
+          onConflict: "user_id,sequence_order"
+        });
 
-      if (dbError) {
-        console.error("answers save error", dbError);
-        throw new Error("回答の記録に失敗しました");
+      if (answerError) {
+        throw answerError;
       }
 
-      const finalAnswerId = savedAnswer?.id || ansId;
-
-      if (voiceData.storagePath) {
-        const { error: assetError } = await supabaseClient
-          .from('media_assets')
-          .upsert({
-            answer_id: finalAnswerId,
-            user_id: user.id,
-            asset_type: 'audio',
-            storage_path: voiceData.storagePath
-          }, { onConflict: 'answer_id, asset_type, storage_path' });
-
-        if (assetError) console.error("media asset save error", assetError);
-      }
-
-      const nextIndex = progress.currentIndex + 1;
-      const nextSeq = questionsDB[nextIndex]?.sequence_order || (currentSeq + 1);
+      // answered_at 更新
 
       await supabaseClient
-        .from('profiles')
-        .update({ current_sequence: nextSeq })
-        .eq('id', user.id);
+        .from("user_questions")
+        .update({
+          answered_at: new Date().toISOString()
+        })
+        .eq("id", currentQ.user_question_id);
 
-      setProgress(p => ({
-        ...p,
-        currentIndex: Math.min(nextIndex, questionsDB.length - 1)
+      await supabaseClient
+        .from("profiles")
+        .update({
+          current_sequence: currentSeq + 1
+        })
+        .eq("id", user.id);
+
+      setProgress(prev => ({
+        ...prev,
+        currentIndex: currentSeq
       }));
 
-      localStorage.setItem('koe_last_visit', Date.now().toString());
       setScene(6);
-    } catch (error) {
-      console.error(error);
-      alert("保存に失敗しました。");
-      setScene(5);
-    } finally {
-      setIsInitializing(false);
-    }
-  };
 
-  if (isInitializing) {
+    } catch (e) {
+      console.error(e);
+      alert("保存に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
     return (
-      <div className="bg-[#0f172a] h-screen w-screen flex items-center justify-center">
-        <p className="text-white/30 tracking-widest text-sm animate-pulse">物語を読み込んでいます...</p>
+      <div className="h-screen flex items-center justify-center">
+        <p className="text-white/30">
+          物語を読み込んでいます...
+        </p>
       </div>
     );
   }
 
-  const currentQ = questionsDB[progress.currentIndex] || {
-    chapter_label: "...",
-    chapter_description: "...",
-    content: "問いを取得できませんでした"
-  };
+  const currentQ =
+    questionsDB[
+      progress.currentIndex % (questionsDB.length || 1)
+    ] || {
+      chapter: "",
+      content: "問いが見つかりません"
+    };
 
   return (
     <div className="app-container">
-      {scene === -1 && <Scene_Login onLogin={async (u) => {
-        setUser(u);
-        const questionSet = await loadUserQuestionSet(u.id);
-        setQuestionsDB(questionSet);
-        setProgress({ currentIndex: 0, total: questionSet.length });
-        setScene(0);
-      }} />}
-      {scene === 0 && <Scene0_Door onNext={() => setScene(1)} />}
+
+      {scene === -1 && (
+        <Scene_Login onLogin={handleLogin} />
+      )}
+
+      {scene === 0 && (
+        <Scene0_Door
+          onNext={() => setScene(1)}
+        />
+      )}
+
       {scene === 1 && (
         <Scene1_MyPage
           progress={progress}
           question={currentQ}
-          userName={user?.name || "あなた"}
-          onNext={() => {
-            resetVoiceData();
-            setScene(2);
-          }}
+          userName={user?.name}
+          onNext={() => setScene(2)}
         />
       )}
-      {scene === 2 && <Scene2_PreVoice onNext={() => setScene(3)} duration={3000} />}
+
+      {scene === 2 && (
+        <Scene2_PreVoice
+          onNext={() => setScene(3)}
+        />
+      )}
+
       {scene === 3 && (
         <Scene_Recording
           question={currentQ}
-          onComplete={(t, d, u, b) => {
-            handleRecordComplete(t, d, u, b);
-            setScene(3.5);
+          onComplete={(text, duration, url, blob) => {
+            setVoiceData(prev => ({
+              ...prev,
+              transcript: text,
+              duration,
+              audioUrl: url,
+              audioBlob: blob
+            }));
+
+            setScene(4);
           }}
         />
       )}
-      {scene === 3.5 && (
-        <Scene3_5_VoiceCheck
+
+      {scene === 4 && (
+        <Scene4_AIMirror
           data={voiceData}
-          onRetry={() => {
-            resetVoiceData();
-            setScene(3);
-          }}
-          onProceed={handleVoiceProceed}
+          onNext={() => setScene(5)}
         />
       )}
-      {scene === "processing" && <Scene_Processing />}
-      {scene === 4 && <Scene4_AIMirror data={voiceData} onNext={() => setScene(5)} />}
-      {scene === 5 && <Scene5_Meaning onNext={handleSaveAnswer} />}
+
+      {scene === 5 && (
+        <Scene5_Meaning
+          onNext={handleSaveAnswer}
+        />
+      )}
+
       {scene === 6 && (
         <Scene6_Completion
-          onTalkMore={() => {
-            resetVoiceData();
-            setScene(2);
+          onBookshelf={() => {
+            location.href = "mypage.html";
           }}
-          onBackToBookshelf={() => window.location.href = 'mypage.html'}
         />
       )}
+
     </div>
   );
 }
 
+// ==========================================
+// LOGIN
+// ==========================================
+
 function Scene_Login({ onLogin }) {
+
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [step, setStep] = useState(1);
   const [pin, setPin] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const handleSendPin = async () => {
-    setLoading(true);
-    const { error } = await supabaseClient.auth.signInWithOtp({ email });
-    setLoading(false);
+  async function sendPin() {
 
-    if (error) {
-      console.error(error);
-      alert("エラーが発生しました。");
-    } else {
-      setStep(2);
-    }
-  };
-
-  const handleVerifyPin = async () => {
-    setLoading(true);
-
-    const { data, error } = await supabaseClient.auth.verifyOtp({
-      email,
-      token: pin,
-      type: 'email'
-    });
+    const { error } =
+      await supabaseClient.auth.signInWithOtp({
+        email
+      });
 
     if (error) {
-      setLoading(false);
-      console.error(error);
-      alert("コードが正しくありません。");
+      alert("送信に失敗しました");
       return;
     }
 
-    const { data: profile, error: profileError } = await supabaseClient
-      .from('profiles')
+    setStep(2);
+  }
+
+  async function verifyPin() {
+
+    const {
+      data,
+      error
+    } = await supabaseClient.auth.verifyOtp({
+      email,
+      token: pin,
+      type: "email"
+    });
+
+    if (error) {
+      alert("コードが正しくありません");
+      return;
+    }
+
+    const {
+      data: profile
+    } = await supabaseClient
+      .from("profiles")
       .upsert({
         id: data.user.id,
-        email: email,
-        name: name || "あなた"
+        email,
+        name
       })
       .select()
       .single();
 
-    setLoading(false);
-
-    if (profileError) {
-      console.error(profileError);
-      alert("プロフィールの保存に失敗しました。");
-      return;
-    }
-
     onLogin({
       id: data.user.id,
-      ...profile,
-      name: profile?.name || "あなた"
+      ...profile
     });
-  };
+  }
 
   return (
-    <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center">
-      <p className="text-[1.1rem] text-white/90 text-narrative mb-12">
-        この物語の持ち主を<br/>教えてください。
+    <div className="h-full flex flex-col items-center justify-center text-center fade-enter">
+
+      <p className="text-xl mb-12 leading-loose">
+        この物語の持ち主を<br/>
+        教えてください
       </p>
 
       {step === 1 ? (
-        <div className="w-full max-w-[280px] space-y-8 mb-12">
-          <div>
-            <p className="text-white/40 text-xs mb-2">お名前</p>
-            <input type="text" className="quiet-input" value={name} onChange={e => setName(e.target.value)} />
-          </div>
-          <div>
-            <p className="text-white/40 text-xs mb-2">メールアドレス</p>
-            <input type="email" className="quiet-input" value={email} onChange={e => setEmail(e.target.value)} />
-          </div>
-          <button onClick={handleSendPin} disabled={!email || !name || loading} className="btn-quiet w-full py-4 rounded-full text-sm">
-            {loading ? "送信中..." : "認証コードを送る"}
+        <div className="w-full max-w-[280px] space-y-8">
+
+          <input
+            className="quiet-input"
+            placeholder="お名前"
+            value={name}
+            onChange={e => setName(e.target.value)}
+          />
+
+          <input
+            className="quiet-input"
+            placeholder="メールアドレス"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+          />
+
+          <button
+            onClick={sendPin}
+            className="btn-quiet w-full py-4 rounded-full"
+          >
+            認証コードを送る
           </button>
+
         </div>
       ) : (
-        <div className="w-full max-w-[280px] space-y-8 mb-12 fade-enter">
-          <p className="text-white/60 text-xs">メールに届いた6桁のコードを入力してください</p>
-          <input type="text" className="quiet-input tracking-widest text-xl" value={pin} onChange={e => setPin(e.target.value)} placeholder="000000" maxLength="6" />
-          <button onClick={handleVerifyPin} disabled={pin.length !== 6 || loading} className="btn-quiet w-full py-4 rounded-full text-sm">
-            {loading ? "確認中..." : "物語をはじめる"}
+        <div className="w-full max-w-[280px] space-y-8">
+
+          <input
+            className="quiet-input"
+            placeholder="6桁コード"
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+          />
+
+          <button
+            onClick={verifyPin}
+            className="btn-quiet w-full py-4 rounded-full"
+          >
+            物語をはじめる
           </button>
+
         </div>
       )}
+
     </div>
   );
 }
 
 function Scene0_Door({ onNext }) {
   return (
-    <div className="h-full flex flex-col items-center justify-center text-center fade-enter px-4">
-      <div className="space-y-6 mb-16 text-narrative">
-        <p className="text-[1.1rem] text-white/90">この時間は、少し落ち着いて<br/>過ごせるときに開いてみてください</p>
+    <div className="h-full flex items-center justify-center text-center fade-enter">
+      <div>
+        <p className="text-xl leading-loose mb-16">
+          この時間は、少し落ち着いて<br/>
+          過ごせるときに開いてみてください
+        </p>
+
+        <button
+          onClick={onNext}
+          className="btn-quiet px-10 py-4 rounded-full"
+        >
+          この時間を始める
+        </button>
       </div>
-      <button onClick={onNext} className="btn-quiet w-full max-w-[280px] py-4 rounded-full text-sm">この時間を始める</button>
     </div>
   );
 }
 
 function Scene1_MyPage({ progress, question, userName, onNext }) {
+
   return (
     <div className="h-full flex flex-col fade-enter">
-      <header className="mb-8 pt-2">
-        <h1 className="text-white/70 text-sm tracking-widest mb-6">{userName || "あなた"}さんの物語</h1>
-        <div className="space-y-2">
-          <p className="text-white/60 text-xs tracking-widest">{question.chapter_description || question.chapter_label}</p>
-          <div className="w-full h-[2px] bg-white/10 rounded-full">
-            <div className="h-full bg-white/40" style={{ width: `${((progress.currentIndex) / Math.max(progress.total, 1)) * 100}%` }}></div>
-          </div>
-          <div className="flex justify-between items-end mt-2">
-            <p className="text-white/80 text-sm tracking-widest">{progress.currentIndex + 1} / {progress.total} ページ</p>
-          </div>
+
+      <header className="mb-8">
+
+        <p className="text-white/50 text-sm mb-4">
+          {userName}さんの物語
+        </p>
+
+        <div className="w-full h-[2px] bg-white/10 rounded-full">
+          <div
+            className="h-full bg-white/40"
+            style={{
+              width: `${(progress.currentIndex / progress.total) * 100}%`
+            }}
+          />
         </div>
+
+        <p className="text-white/60 text-sm mt-3">
+          {progress.currentIndex + 1} / {progress.total} ページ
+        </p>
+
       </header>
 
-      <div className="flex-1 flex flex-col justify-center">
-        <div className="glass-card p-6 text-center space-y-6">
-          <p className="text-white/50 text-xs tracking-widest">今日の問い</p>
-          <p className="text-[1.1rem] text-narrative text-white/90 whitespace-pre-wrap">{question.content}</p>
+      <div className="flex-1 flex items-center">
+
+        <div className="glass-card p-8 w-full text-center">
+
+          <p className="text-white/40 text-xs tracking-widest mb-6">
+            今日の問い
+          </p>
+
+          <p className="text-xl text-narrative whitespace-pre-wrap">
+            {question.content}
+          </p>
+
         </div>
+
       </div>
 
-      <div className="flex flex-col gap-4 mt-8 pb-8">
-        <button onClick={onNext} className="btn-quiet bg-white/10 w-full py-4 rounded-full tracking-widest text-white">今回の問いに答える</button>
+      <div className="pb-8 pt-8">
+
+        <button
+          onClick={onNext}
+          className="btn-quiet w-full py-4 rounded-full"
+        >
+          今回の問いに答える
+        </button>
+
       </div>
+
     </div>
   );
 }
 
-function Scene2_PreVoice({ onNext, duration }) {
+function Scene2_PreVoice({ onNext }) {
+
   useEffect(() => {
-    const t = setTimeout(onNext, duration);
+    const t = setTimeout(onNext, 3000);
     return () => clearTimeout(t);
   }, []);
 
   return (
     <div className="h-full flex items-center justify-center text-center fade-enter">
-      <p className="text-[1.1rem] text-white/70 text-narrative tracking-[0.15em] animate-pulse">すぐに答えなくても大丈夫です</p>
+      <p className="text-white/70 text-xl text-narrative">
+        すぐに答えなくても大丈夫です
+      </p>
     </div>
   );
 }
 
 function Scene_Recording({ question, onComplete }) {
-  const [step, setStep] = useState(0);
+
+  const [recording, setRecording] = useState(false);
   const [time, setTime] = useState(0);
-  const [text, setText] = useState("");
 
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
-  const speechRef = useRef(null);
-  const mimeTypeRef = useRef("");
 
   useEffect(() => {
+
     let timer;
-    if (step === 1) {
-      timer = setInterval(() => setTime(t => t + 1), 1000);
-      document.body.classList.add('is-recording');
-    } else {
-      document.body.classList.remove('is-recording');
+
+    if (recording) {
+      timer = setInterval(() => {
+        setTime(t => t + 1);
+      }, 1000);
     }
 
-    return () => {
-      clearInterval(timer);
-      document.body.classList.remove('is-recording');
-    };
-  }, [step]);
+    return () => clearInterval(timer);
 
-  const getSupportedMimeType = () => {
-    const types = ["audio/mp4", "audio/aac", "audio/webm;codecs=opus", "audio/webm"];
-    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
-    return types.find(type => MediaRecorder.isTypeSupported(type)) || "";
-  };
+  }, [recording]);
 
-  const start = async () => {
-    setStep(1);
-    setTime(0);
-    setText("");
+  async function start() {
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
+
+    const mediaRecorder = new MediaRecorder(stream);
+
+    mediaRef.current = mediaRecorder;
+
     chunksRef.current = [];
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      const mimeType = getSupportedMimeType();
-      mimeTypeRef.current = mimeType;
-
-      mediaRef.current = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-
-      mediaRef.current.ondataavailable = e => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      mediaRef.current.start();
-
-      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-      if (SpeechRec) {
-        speechRef.current = new SpeechRec();
-        speechRef.current.lang = 'ja-JP';
-        speechRef.current.continuous = true;
-        speechRef.current.interimResults = true;
-
-        speechRef.current.onresult = e => {
-          let finalText = "";
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
-          }
-          if (finalText) setText(prev => prev + finalText);
-        };
-
-        try { speechRef.current.start(); } catch (e) { console.warn("speech recognition start failed", e); }
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) {
+        chunksRef.current.push(e.data);
       }
-    } catch (e) {
-      console.error(e);
-      alert("マイクが使えません: " + e.message);
-      setStep(0);
-    }
-  };
+    };
 
-  const stop = () => {
-    setStep(2);
+    mediaRecorder.onstop = () => {
 
-    if (speechRef.current) {
-      try { speechRef.current.stop(); } catch (e) {}
-    }
+      const blob = new Blob(chunksRef.current, {
+        type: mediaRecorder.mimeType
+      });
 
-    if (mediaRef.current && mediaRef.current.state !== 'inactive') {
-      mediaRef.current.onstop = () => {
-        const finalMimeType = mimeTypeRef.current || mediaRef.current.mimeType || "audio/mp4";
-        const blob = new Blob(chunksRef.current, { type: finalMimeType });
-        const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
 
-        onComplete(text, time, url, blob);
+      onComplete(
+        "",
+        time,
+        url,
+        blob
+      );
+    };
 
-        if (mediaRef.current.stream) {
-          mediaRef.current.stream.getTracks().forEach(t => t.stop());
-        }
-      };
+    mediaRecorder.start();
 
-      mediaRef.current.stop();
-    } else {
-      onComplete(text, time, null, null);
-    }
-  };
+    setRecording(true);
+  }
+
+  function stop() {
+
+    mediaRef.current.stop();
+
+    setRecording(false);
+  }
 
   return (
-    <div className="h-full flex flex-col fade-enter text-center pt-12">
-      <p className="text-white/60 text-[1.05rem] text-narrative flex-1">{question.content}</p>
+    <div className="h-full flex flex-col text-center fade-enter">
+
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-xl text-narrative whitespace-pre-wrap">
+          {question.content}
+        </p>
+      </div>
 
       <div className="pb-20">
-        {step === 0 && <button onClick={start} className="w-20 h-20 rounded-full bg-white/10 border border-white/30 text-white/70 mx-auto block">開始</button>}
-        {step === 1 && (
-          <div className="space-y-8">
-            <p className="font-mono text-3xl text-white/80 animate-pulse">{Math.floor(time / 60).toString().padStart(2, '0')}:{(time % 60).toString().padStart(2, '0')}</p>
-            <button onClick={stop} className="w-16 h-16 rounded-full bg-white text-slate-900 mx-auto block font-bold text-xs">完了</button>
+
+        {!recording ? (
+          <button
+            onClick={start}
+            className="w-20 h-20 rounded-full bg-white/10 border border-white/30"
+          >
+            開始
+          </button>
+        ) : (
+          <div>
+
+            <p className="mb-8 text-3xl">
+              {time}
+            </p>
+
+            <button
+              onClick={stop}
+              className="w-16 h-16 rounded-full bg-white text-slate-900"
+            >
+              完了
+            </button>
+
           </div>
         )}
-        {step === 2 && <p className="text-white/50 text-sm animate-pulse">音声を預かっています...</p>}
-      </div>
-    </div>
-  );
-}
 
-function Scene3_5_VoiceCheck({ data, onRetry, onProceed }) {
-  return (
-    <div className="h-full flex flex-col items-center justify-center fade-enter px-6 text-center">
-      <div className="glass-card p-8 w-full max-w-[320px] mb-12">
-        <p className="text-white/40 text-xs mb-4">RECORDED AUDIO</p>
-        {data.audioUrl ? <audio controls src={data.audioUrl} /> : <p className="text-white/40 text-sm">音声プレビューを作成できませんでした</p>}
       </div>
 
-      <div className="flex flex-col gap-4 w-full max-w-[280px]">
-        <button onClick={onProceed} className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white">この内容で進む</button>
-        <button onClick={onRetry} className="w-full py-3 text-white/40 text-sm underline underline-offset-4">もう一度話す</button>
-      </div>
-    </div>
-  );
-}
-
-function Scene_Processing() {
-  return (
-    <div className="h-full flex flex-col items-center justify-center fade-enter text-center">
-      <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/80 animate-spin mb-6"></div>
-      <p className="text-white/50 tracking-widest text-sm text-narrative">声を預かり、<br/>言葉を編んでいます...</p>
     </div>
   );
 }
 
 function Scene4_AIMirror({ data, onNext }) {
+
   return (
     <div className="h-full flex flex-col fade-enter">
-      <div className="flex-1 overflow-y-auto pb-10">
-        <div className="mb-8 p-4 bg-white/5 border-l-2 border-amber-600/50 rounded-r-lg">
-          <p className="text-amber-50/90 text-[0.95rem] tracking-widest">{data.aiMirror}</p>
+
+      <div className="flex-1 overflow-y-auto">
+
+        <div className="glass-card p-5 mb-8">
+          <p className="text-amber-100">
+            {data.aiMirror || "ひとつの時間が形になっています"}
+          </p>
         </div>
-        <div className="text-white/80 text-[1.05rem] text-narrative whitespace-pre-wrap">{data.editedText}</div>
+
+        <p className="text-narrative whitespace-pre-wrap">
+          {data.editedText || data.transcript}
+        </p>
+
       </div>
 
-      <div className="pt-6 border-t border-white/10">
-        <button onClick={onNext} className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white">次へ進む</button>
+      <div className="pt-8">
+        <button
+          onClick={onNext}
+          className="btn-quiet w-full py-4 rounded-full"
+        >
+          次へ進む
+        </button>
       </div>
+
     </div>
   );
 }
 
 function Scene5_Meaning({ onNext }) {
-  const tags = ["少し懐かしい時間", "誰かを思い出す時間", "自分を振り返る時間", "言葉にできなかった時間"];
+
+  const tags = [
+    "少し懐かしい時間",
+    "誰かを思い出す時間",
+    "自分を振り返る時間",
+    "言葉にできなかった時間"
+  ];
 
   return (
-    <div className="h-full flex flex-col fade-enter">
-      <div className="flex-1 flex flex-col justify-center text-center">
-        <p className="text-white/80 text-[1.1rem] text-narrative mb-10">この語りは、あなたにとって<br />どんな時間でしたか？</p>
-        <div className="flex flex-col gap-4 px-4">
-          {tags.map(t => (
-            <button key={t} onClick={() => onNext(t)} className="btn-quiet py-4 rounded-xl">{t}</button>
-          ))}
-        </div>
+    <div className="h-full flex flex-col justify-center fade-enter">
+
+      <p className="text-center text-xl text-narrative mb-10">
+        この語りは、あなたにとって<br/>
+        どんな時間でしたか？
+      </p>
+
+      <div className="space-y-4">
+
+        {tags.map(tag => (
+          <button
+            key={tag}
+            onClick={() => onNext(tag)}
+            className="btn-quiet w-full py-4 rounded-xl"
+          >
+            {tag}
+          </button>
+        ))}
+
       </div>
 
-      <button onClick={() => onNext("スキップ")} className="mb-6 text-white/30 text-sm underline underline-offset-4">スキップして保存</button>
     </div>
   );
 }
 
-function Scene6_Completion({ onTalkMore, onBackToBookshelf }) {
-  return (
-    <div className="h-full flex flex-col items-center justify-center fade-enter text-center">
-      <p className="text-white/90 text-[1.05rem] mb-12">あなたの物語に、<br/>ひとつのページが加わりました</p>
+function Scene6_Completion({ onBookshelf }) {
 
-      <div className="flex flex-col gap-4 w-full max-w-[280px]">
-        <button onClick={onTalkMore} className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white">もう1ページ進める</button>
-        <button onClick={onBackToBookshelf} className="w-full py-3 text-white/40 text-sm underline underline-offset-4">本棚に戻る</button>
-      </div>
+  return (
+    <div className="h-full flex flex-col items-center justify-center text-center fade-enter">
+
+      <p className="text-xl leading-loose mb-14">
+        あなたの物語に、<br/>
+        ひとつのページが加わりました
+      </p>
+
+      <button
+        onClick={onBookshelf}
+        className="btn-quiet px-10 py-4 rounded-full"
+      >
+        本棚に戻る
+      </button>
+
     </div>
   );
 }
 
-const startApp = () => {
-  const container = document.getElementById('root');
-  if (container) {
-    const root = ReactDOM.createRoot(container);
-    root.render(<App />);
-  }
-};
+ReactDOM.createRoot(
+  document.getElementById("root")
+).render(<App />);
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startApp);
-} else {
-  startApp();
-}
 </script>
 </body>
 </html>
