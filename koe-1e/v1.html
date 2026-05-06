@@ -690,26 +690,50 @@ function Scene_Login({ onLogin }) {
     }
   };
 
-  const handleVerifyPin = async () => {
-    setLoading(true);
+const handleVerifyPin = async () => {
+  setLoading(true);
 
-    const { data, error } = await supabaseClient.auth.verifyOtp({
-      email,
-      token: pin,
-      type: "email"
-    });
+  const { data, error } = await supabaseClient.auth.verifyOtp({
+    email,
+    token: pin,
+    type: "email"
+  });
 
-    if (error) {
-      setLoading(false);
-      console.error(error);
-      alert("コードが正しくありません。");
-      return;
-    }
+  if (error) {
+    setLoading(false);
+    console.error(error);
+    alert("コードが正しくありません。");
+    return;
+  }
 
-    const { data: profile, error: profileError } = await supabaseClient
+  const userId = data.user.id;
+
+  const { data: existingProfile, error: existingError } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (existingError) {
+    setLoading(false);
+    console.error(existingError);
+    alert("プロフィールの確認に失敗しました。");
+    return;
+  }
+
+  let profile;
+
+  if (existingProfile) {
+    profile = existingProfile;
+
+    alert(
+      "このメールアドレスでは、すでに物語が始まっています。\n前回の続きとして開きます。"
+    );
+  } else {
+    const { data: newProfile, error: profileError } = await supabaseClient
       .from("profiles")
-      .upsert({
-        id: data.user.id,
+      .insert({
+        id: userId,
         email: email,
         name: name || "あなた"
       })
@@ -723,22 +747,30 @@ function Scene_Login({ onLogin }) {
       return;
     }
 
-    await ensureUserQuestions(data.user.id);
+    profile = newProfile;
+  }
 
-    setLoading(false);
+  await ensureUserQuestions(userId);
 
-    onLogin({
-      id: data.user.id,
-      ...profile,
-      name: profile?.name || "あなた"
-    });
-  };
+  setLoading(false);
+
+  onLogin({
+    id: userId,
+    ...profile,
+    name: profile?.name || "あなた"
+  });
+};
 
   return (
     <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center">
-      <p className="text-[1.1rem] text-white/90 text-narrative mb-12">
-        この物語の持ち主を<br/>教えてください。
-      </p>
+    <div className="mb-12">
+    <p className="text-[1.1rem] text-white/90 text-narrative mb-4">
+      この物語を開くために<br/>お名前とメールアドレスを教えてください。
+    </p>
+    <p className="text-white/35 text-xs leading-loose">
+      同じメールアドレスでは、前回の続きが開きます。
+    </p>
+    </div>
 
       {step === 1 ? (
         <div className="w-full max-w-[280px] space-y-8 mb-12">
