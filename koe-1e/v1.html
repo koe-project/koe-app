@@ -270,6 +270,7 @@ function App() {
   const [scene, setScene] = useState(-1);
   const [user, setUser] = useState(null);
   const [questionsDB, setQuestionsDB] = useState([]);
+  const [notificationPref, setNotificationPref] = useState(null);
   const [progress, setProgress] = useState({ currentIndex: 0, total: 0 });
 
   const [voiceData, setVoiceData] = useState({
@@ -300,6 +301,14 @@ function App() {
           .select("*")
           .eq("id", session.user.id)
           .maybeSingle();
+        
+        const { data: notificationData } = await supabaseClient
+          .from("notification_preferences")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+
+        setNotificationPref(notificationData || null);
 
         const currentUser = {
           id: session.user.id,
@@ -317,7 +326,11 @@ function App() {
           total: questionSet.length
         });
 
-        setScene(0);
+        if (!notificationData) {
+          setScene("notification_setup");
+        } else {
+          setScene(0);
+        }
       } catch (e) {
         console.error("init error", e);
         setScene(-1);
@@ -548,6 +561,26 @@ function App() {
             try {
               setUser(u);
               const questionSet = await loadUserQuestionSet(u.id);
+              setQuestionsDB(questionSet);
+              setProgress({
+                currentIndex: 0,
+                total: questionSet.length
+              });
+              setScene(0);
+            } finally {
+              setIsInitializing(false);
+            }
+          }}
+        />
+      )}
+
+      {scene === "notification_setup" && (
+        <Scene_NotificationSetup
+          user={user}
+          onComplete={async () => {
+            setIsInitializing(true);
+            try {
+              const questionSet = await loadUserQuestionSet(user.id);
               setQuestionsDB(questionSet);
               setProgress({
                 currentIndex: 0,
@@ -1181,6 +1214,222 @@ if (document.readyState === "loading") {
 } else {
   startApp();
 }
+function Scene_NotificationSetup({ user, onComplete }) {
+
+  const presets = [
+    {
+      label: "日曜の夜 20:00",
+      weekday: 0,
+      hour: 20
+    },
+    {
+      label: "月曜の朝 7:00",
+      weekday: 1,
+      hour: 7
+    },
+    {
+      label: "金曜の夜 21:00",
+      weekday: 5,
+      hour: 21
+    }
+  ];
+
+  const weekdays = [
+    "日",
+    "月",
+    "火",
+    "水",
+    "木",
+    "金",
+    "土"
+  ];
+
+  const [selectedPreset, setSelectedPreset] = useState(null);
+
+  const [customMode, setCustomMode] = useState(false);
+
+  const [weekday, setWeekday] = useState(0);
+
+  const [time, setTime] = useState("20:00");
+
+  const [loading, setLoading] = useState(false);
+
+  async function savePreference() {
+
+    try {
+
+      setLoading(true);
+
+      let finalWeekday;
+      let finalHour;
+
+      if (customMode) {
+
+        finalWeekday = weekday;
+
+        finalHour = Number(time.split(":")[0]);
+
+      } else {
+
+        if (!selectedPreset) {
+          alert("時間を選択してください");
+          return;
+        }
+
+        finalWeekday = selectedPreset.weekday;
+        finalHour = selectedPreset.hour;
+      }
+
+      const { error } = await supabaseClient
+        .from("notification_preferences")
+        .upsert({
+          user_id: user.id,
+          email_enabled: true,
+          line_enabled: false,
+          weekday: finalWeekday,
+          hour: finalHour,
+          timezone: "Asia/Tokyo",
+          delivery_channel: "email"
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      onComplete();
+
+    } catch (e) {
+
+      console.error(e);
+      alert("設定の保存に失敗しました");
+
+    } finally {
+
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="h-full flex flex-col justify-center fade-enter text-center px-4">
+
+      <p className="text-[1.1rem] text-white/90 text-narrative mb-3">
+        問いが届く時間を選んでください
+      </p>
+
+      <p className="text-white/35 text-sm mb-14">
+        （あとで変更できます）
+      </p>
+
+      {!customMode ? (
+
+        <>
+
+          <div className="space-y-4 mb-10">
+
+            {presets.map(preset => (
+              <button
+                key={preset.label}
+                onClick={() => setSelectedPreset(preset)}
+                className={`
+                  w-full py-4 rounded-xl transition-all
+                  ${selectedPreset?.label === preset.label
+                    ? 'bg-white/12 border border-white/25 text-white'
+                    : 'btn-quiet'}
+                `}
+              >
+                ○ {preset.label}
+              </button>
+            ))}
+
+          </div>
+
+          <button
+            onClick={savePreference}
+            disabled={!selectedPreset || loading}
+            className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white mb-12"
+          >
+            {loading ? "保存中..." : "この時間に受け取る"}
+          </button>
+
+          <div>
+            <p className="text-white/40 text-sm leading-loose mb-6">
+              ご自身のペースに合わせて<br />
+              選ぶこともできます。
+            </p>
+
+            <button
+              onClick={() => setCustomMode(true)}
+              className="text-white/45 text-sm underline underline-offset-4"
+            >
+              曜日と時間を設定する
+            </button>
+          </div>
+
+        </>
+
+      ) : (
+
+        <div className="fade-enter">
+
+          <div className="mb-12">
+
+            <p className="text-white/50 text-sm mb-6">
+              問いが届く曜日
+            </p>
+
+            <div className="flex justify-center gap-2 flex-wrap">
+
+              {weekdays.map((day, index) => (
+                <button
+                  key={day}
+                  onClick={() => setWeekday(index)}
+                  className={`
+                    w-12 h-12 rounded-full transition-all
+                    ${weekday === index
+                      ? 'bg-white text-slate-900'
+                      : 'btn-quiet'}
+                  `}
+                >
+                  {day}
+                </button>
+              ))}
+
+            </div>
+
+          </div>
+
+          <div className="mb-14">
+
+            <p className="text-white/50 text-sm mb-6">
+              問いが届く時間
+            </p>
+
+            <input
+              type="time"
+              value={time}
+              onChange={e => setTime(e.target.value)}
+              className="quiet-input max-w-[180px] mx-auto text-center"
+            />
+
+          </div>
+
+          <button
+            onClick={savePreference}
+            disabled={loading}
+            className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white"
+          >
+            {loading ? "保存中..." : "この時間に受け取る"}
+          </button>
+
+        </div>
+
+      )}
+
+    </div>
+  );
+}
+  
+  
 </script>
 </body>
 </html>
