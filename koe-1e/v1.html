@@ -1222,10 +1222,10 @@ function Scene6_Completion({ onTalkMore, onBackToBookshelf }) {
         </button>
 
         <button
-          onClick={onBackToBookshelf}
-          className="w-full py-3 text-white/40 text-sm underline underline-offset-4"
+          onClick={() => window.location.href = "settings.html"}
+          className="w-full py-3 text-white/25 text-sm underline underline-offset-4"
         >
-          本棚に戻る
+          物語の設定
         </button>
       </div>
     </div>
