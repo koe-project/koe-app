@@ -137,67 +137,76 @@ function App() {
     init();
   }, []);
 
-  async function init() {
+ async function init() {
 
-    try {
+  try {
 
-      const {
-        data: { session }
-      } = await supabaseClient.auth.getSession();
+    const {
+      data: { session }
+    } = await supabaseClient.auth.getSession();
 
-      if (!session) {
-        location.href = "v1.html";
-        return;
-      }
-
-      const userId = session.user.id;
-
-      setUser(session.user);
-
-      // profile
-
-      const {
-        data: profileData
-      } = await supabaseClient
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-      
-       setProfile({
-         name: profileData?.name || "",
-         email: profileData?.email || session.user.email || ""
-        });
-      }
-
-      // notification preferences
-
-      const {
-        data: prefData
-      } = await supabaseClient
-        .from("notification_preferences")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (prefData) {
-        setPref({
-          email_enabled: prefData.email_enabled ?? true,
-          weekday: prefData.weekday ?? 0,
-          hour: prefData.hour ?? 20
-        });
-      }
-
-    } catch (e) {
-
-      console.error(e);
-      alert("設定の読み込みに失敗しました");
-
-    } finally {
-
-      setLoading(false);
+    if (!session) {
+      location.href = "v1.html";
+      return;
     }
+
+    const userId = session.user.id;
+
+    setUser(session.user);
+
+    // profile
+
+    const {
+      data: profileData,
+      error: profileError
+    } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    setProfile({
+      name: profileData?.name || "",
+      email: profileData?.email || session.user.email || ""
+    });
+
+    // notification preferences
+
+    const {
+      data: prefData,
+      error: prefError
+    } = await supabaseClient
+      .from("notification_preferences")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (prefError) {
+      throw prefError;
+    }
+
+    if (prefData) {
+      setPref({
+        email_enabled: prefData.email_enabled ?? true,
+        weekday: prefData.weekday ?? 0,
+        hour: prefData.hour ?? 20
+      });
+    }
+
+  } catch (e) {
+
+    console.error(e);
+    alert("設定の読み込みに失敗しました");
+
+  } finally {
+
+    setLoading(false);
   }
+}
 
   async function saveSettings() {
 
