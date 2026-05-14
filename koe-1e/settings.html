@@ -106,7 +106,7 @@ const SUPABASE_URL =
   "https://wquxjeqkumossjxehdop.supabase.co";
 
 const SUPABASE_ANON_KEY =
-  "YOUR_ANON_KEY";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxdXhqZXFrdW1vc3NqeGVoZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTEyMjksImV4cCI6MjA5MjU4NzIyOX0.wImRfRH2cr-w1uh2_c3vSS0_t4pHDeRWmWHZre1WbT4";
 
 const supabaseClient =
   window.supabase.createClient(
@@ -163,11 +163,10 @@ function App() {
         .select("*")
         .eq("id", userId)
         .maybeSingle();
-
-      if (profileData) {
-        setProfile({
-          name: profileData.name || "",
-          email: profileData.email || session.user.email || ""
+      
+       setProfile({
+         name: profileData?.name || "",
+         email: profileData?.email || session.user.email || ""
         });
       }
 
