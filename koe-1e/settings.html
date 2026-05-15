@@ -130,7 +130,8 @@ function App() {
   const [pref, setPref] = useState({
     email_enabled: true,
     weekday: 0,
-    hour: 20
+    hour: 20,
+    minute: 0
   });
 
   useEffect(() => {
@@ -193,7 +194,8 @@ function App() {
       setPref({
         email_enabled: prefData.email_enabled ?? true,
         weekday: prefData.weekday ?? 0,
-        hour: prefData.hour ?? 20
+        hour: prefData.hour ?? 20,
+        minute: prefData.minute ?? 0
       });
     }
 
@@ -239,9 +241,12 @@ function App() {
             line_enabled: false,
             weekday: pref.weekday,
             hour: pref.hour,
+            minute: pref.minute,
             timezone: "Asia/Tokyo",
             delivery_channel: "email"
-          });
+          }, {
+  onConflict: "user_id"
+});
 
       if (prefError) {
         throw prefError;
@@ -442,14 +447,14 @@ function App() {
 
                 <select
                   className="quiet-select"
-                  value={`${String(pref.hour).padStart(2, "0")}:00`}
+                  value={`${String(pref.hour).padStart(2, "0")}:${String(pref.minute || 0).padStart(2, "0")}`}
                   onChange={(e) => {
-                    const hour =
-                      Number(e.target.value.split(":")[0]);
+                    const [hour, minute] = e.target.value.split(":").map(Number);
 
                     setPref(prev => ({
                       ...prev,
-                      hour
+                      hour,
+                      minute
                     }));
                   }}
                 >
