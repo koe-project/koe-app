@@ -127,12 +127,9 @@ function App() {
     email: ""
   });
 
-  const [pref, setPref] = useState({
-    email_enabled: true,
-    weekday: 0,
-    hour: 20,
-    minute: 0
-  });
+const [pref, setPref] = useState({
+  email_enabled: true
+});
   const defaultSchedules = Array.from({ length: 7 }, (_, weekday) => ({
   weekday,
   enabled: false,
@@ -184,29 +181,8 @@ const [schedules, setSchedules] = useState(defaultSchedules);
       email: profileData?.email || session.user.email || ""
     });
 
-    // notification preferences
+// notification schedules
 
-    const {
-      data: prefData,
-      error: prefError
-    } = await supabaseClient
-      .from("notification_preferences")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (prefError) {
-      throw prefError;
-    }
-
-    if (prefData) {
-      setPref({
-        email_enabled: prefData.email_enabled ?? true,
-        weekday: prefData.weekday ?? 0,
-        hour: prefData.hour ?? 20,
-        minute: prefData.minute ?? 0
-      });
-    }
 const {
   data: scheduleData,
   error: scheduleError
@@ -223,8 +199,8 @@ if (scheduleError) {
 const mergedSchedules = Array.from({ length: 7 }, (_, weekday) => ({
   weekday,
   enabled: false,
-  hour: prefData?.hour ?? 20,
-  minute: prefData?.minute ?? 0,
+  hour: 20,
+  minute: 0,
   delivery_channel: "email"
 }));
 
@@ -238,11 +214,15 @@ if (scheduleData && scheduleData.length > 0) {
       delivery_channel: s.delivery_channel || "email"
     };
   });
-} else if (prefData) {
-  mergedSchedules[prefData.weekday ?? 0].enabled = true;
+
+  setPref({
+    email_enabled: scheduleData.some(s => s.enabled)
+  });
 }
 
 setSchedules(mergedSchedules);
+
+    
   } catch (e) {
 
     console.error(e);
@@ -274,28 +254,9 @@ setSchedules(mergedSchedules);
         throw profileError;
       }
 
-      // notification update
+// notification schedules update
 
-      const { error: prefError } =
-        await supabaseClient
-          .from("notification_preferences")
-          .upsert({
-            user_id: user.id,
-            email_enabled: pref.email_enabled,
-            line_enabled: false,
-            weekday: pref.weekday,
-            hour: pref.hour,
-            minute: pref.minute,
-            timezone: "Asia/Tokyo",
-            delivery_channel: "email"
-          }, {
-  onConflict: "user_id"
-});
-
-      if (prefError) {
-        throw prefError;
-      }
-      const scheduleRows = schedules.map(s => ({
+const scheduleRows = schedules.map(s => ({
   user_id: user.id,
   weekday: s.weekday,
   hour: s.hour,
@@ -315,6 +276,7 @@ if (scheduleError) {
   throw scheduleError;
 }
 
+      
       alert("保存しました");
 
     } catch (e) {
