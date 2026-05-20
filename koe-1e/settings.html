@@ -133,6 +133,15 @@ function App() {
     hour: 20,
     minute: 0
   });
+  const defaultSchedules = Array.from({ length: 7 }, (_, weekday) => ({
+  weekday,
+  enabled: false,
+  hour: 20,
+  minute: 0,
+  delivery_channel: "email"
+}));
+
+const [schedules, setSchedules] = useState(defaultSchedules);
 
   useEffect(() => {
     init();
@@ -198,7 +207,42 @@ function App() {
         minute: prefData.minute ?? 0
       });
     }
+const {
+  data: scheduleData,
+  error: scheduleError
+} = await supabaseClient
+  .from("notification_schedules")
+  .select("*")
+  .eq("user_id", userId)
+  .order("weekday");
 
+if (scheduleError) {
+  throw scheduleError;
+}
+
+const mergedSchedules = Array.from({ length: 7 }, (_, weekday) => ({
+  weekday,
+  enabled: false,
+  hour: prefData?.hour ?? 20,
+  minute: prefData?.minute ?? 0,
+  delivery_channel: "email"
+}));
+
+if (scheduleData && scheduleData.length > 0) {
+  scheduleData.forEach(s => {
+    mergedSchedules[s.weekday] = {
+      weekday: s.weekday,
+      enabled: s.enabled ?? false,
+      hour: s.hour ?? 20,
+      minute: s.minute ?? 0,
+      delivery_channel: s.delivery_channel || "email"
+    };
+  });
+} else if (prefData) {
+  mergedSchedules[prefData.weekday ?? 0].enabled = true;
+}
+
+setSchedules(mergedSchedules);
   } catch (e) {
 
     console.error(e);
@@ -251,6 +295,25 @@ function App() {
       if (prefError) {
         throw prefError;
       }
+      const scheduleRows = schedules.map(s => ({
+  user_id: user.id,
+  weekday: s.weekday,
+  hour: s.hour,
+  minute: s.minute,
+  delivery_channel: "email",
+  enabled: pref.email_enabled ? s.enabled : false
+}));
+
+const { error: scheduleError } =
+  await supabaseClient
+    .from("notification_schedules")
+    .upsert(scheduleRows, {
+      onConflict: "user_id,weekday"
+    });
+
+if (scheduleError) {
+  throw scheduleError;
+}
 
       alert("保存しました");
 
@@ -409,64 +472,92 @@ function App() {
 
               <div>
 
-                <p className="text-white/50 text-sm mb-4">
-                  問いが届く曜日
-                </p>
+  <p className="text-white/50 text-sm mb-4">
+    問いが届く曜日と時間
+  </p>
 
-                <div className="flex flex-wrap gap-2">
+  <div className="space-y-3">
 
-                  {weekdays.map((day, index) => (
-                    <button
-                      key={day}
-                      onClick={() =>
-                        setPref(prev => ({
-                          ...prev,
-                          weekday: index
-                        }))
-                      }
-                      className={`
-                        w-12 h-12 rounded-full transition-all
-                        ${pref.weekday === index
-                          ? 'bg-white text-slate-900'
-                          : 'btn-quiet text-white/70'}
-                      `}
-                    >
-                      {day}
-                    </button>
-                  ))}
+    {weekdays.map((day, index) => {
+      const schedule = schedules[index];
+      const disabled = !pref.email_enabled || !schedule.enabled;
 
-                </div>
+      return (
+        <div
+          key={day}
+          className={`
+            flex items-center gap-4 rounded-2xl px-4 py-3 transition-all
+            ${disabled
+              ? 'bg-white/[.02] text-white/25'
+              : 'bg-white/[.05] text-white/80'}
+          `}
+        >
 
-              </div>
+          <button
+            onClick={() =>
+              setSchedules(prev =>
+                prev.map(s =>
+                  s.weekday === index
+                    ? { ...s, enabled: !s.enabled }
+                    : s
+                )
+              )
+            }
+            disabled={!pref.email_enabled}
+            className={`
+              w-12 h-7 rounded-full transition-all relative shrink-0
+              ${schedule.enabled && pref.email_enabled
+                ? 'bg-white/80'
+                : 'bg-white/10'}
+            `}
+          >
+            <div
+              className={`
+                absolute top-1 w-5 h-5 rounded-full transition-all
+                ${schedule.enabled && pref.email_enabled
+                  ? 'left-6 bg-slate-900'
+                  : 'left-1 bg-white/50'}
+              `}
+            />
+          </button>
 
-              <div>
+          <div className="w-12 text-sm">
+            {day}曜
+          </div>
 
-                <p className="text-white/50 text-sm mb-4">
-                  問いが届く時間
-                </p>
+          <select
+            className={`
+              quiet-select flex-1
+              ${disabled ? 'opacity-30 cursor-not-allowed' : ''}
+            `}
+            disabled={disabled}
+            value={`${String(schedule.hour).padStart(2, "0")}:${String(schedule.minute || 0).padStart(2, "0")}`}
+            onChange={(e) => {
+              const [hour, minute] = e.target.value.split(":").map(Number);
 
-                <select
-                  className="quiet-select"
-                  value={`${String(pref.hour).padStart(2, "0")}:${String(pref.minute || 0).padStart(2, "0")}`}
-                  onChange={(e) => {
-                    const [hour, minute] = e.target.value.split(":").map(Number);
+              setSchedules(prev =>
+                prev.map(s =>
+                  s.weekday === index
+                    ? { ...s, hour, minute }
+                    : s
+                )
+              );
+            }}
+          >
+            {timeOptions.map(t => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
 
-                    setPref(prev => ({
-                      ...prev,
-                      hour,
-                      minute
-                    }));
-                  }}
-                >
-                  {timeOptions.map(t => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+        </div>
+      );
+    })}
 
-              </div>
+  </div>
 
+</div>
               <div>
 
                 <p className="text-white/50 text-sm mb-2">
