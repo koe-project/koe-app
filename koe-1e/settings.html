@@ -214,11 +214,11 @@ if (scheduleData && scheduleData.length > 0) {
       delivery_channel: s.delivery_channel || "email"
     };
   });
-
-  setPref({
-    email_enabled: scheduleData.some(s => s.enabled)
-  });
 }
+
+setPref({
+  email_enabled: scheduleData?.some(s => s.enabled) ?? false
+});
 
 setSchedules(mergedSchedules);
 
@@ -400,7 +400,7 @@ if (scheduleError) {
                     </p>
 
                     <p className="text-white/35 text-xs">
-                      毎週、問いをお届けします
+                      設定した曜日と時間に問いをお届けします
                     </p>
                   </div>
 
