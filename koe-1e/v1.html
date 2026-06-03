@@ -130,7 +130,190 @@ function getSequenceFromUrl() {
   const seq = parseInt(params.get("sequence"), 10);
   return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
+async function ensureUserFoundation(userId, profile) {
+  const displayName = profile?.name || "あなた";
 
+  // 1. family
+  let { data: family, error: familySelectError } = await supabaseClient
+    .from("families")
+    .select("*")
+    .eq("owner_user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (familySelectError) {
+    console.error("family select error", familySelectError);
+    throw familySelectError;
+  }
+
+  if (!family) {
+    const { data: newFamily, error: familyInsertError } = await supabaseClient
+      .from("families")
+      .insert({
+        owner_user_id: userId,
+        name: `${displayName}さんの家族`
+      })
+      .select()
+      .single();
+
+    if (familyInsertError) {
+      console.error("family insert error", familyInsertError);
+      throw familyInsertError;
+    }
+
+    family = newFamily;
+  }
+
+  // 2. person linked to this user
+  let { data: link, error: linkSelectError } = await supabaseClient
+    .from("user_person_links")
+    .select(`
+      *,
+      persons (*)
+    `)
+    .eq("user_id", userId)
+    .eq("role", "self")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (linkSelectError) {
+    console.error("user_person_links select error", linkSelectError);
+    throw linkSelectError;
+  }
+
+  let person = link?.persons || null;
+
+  if (!person) {
+    const { data: newPerson, error: personInsertError } = await supabaseClient
+      .from("persons")
+      .insert({
+        family_id: family.id,
+        display_name: displayName
+      })
+      .select()
+      .single();
+
+    if (personInsertError) {
+      console.error("person insert error", personInsertError);
+      throw personInsertError;
+    }
+
+    person = newPerson;
+
+    const { error: linkInsertError } = await supabaseClient
+      .from("user_person_links")
+      .insert({
+        user_id: userId,
+        person_id: person.id,
+        role: "self"
+      });
+
+    if (linkInsertError) {
+      console.error("user_person_links insert error", linkInsertError);
+      throw linkInsertError;
+    }
+  }
+
+  // 3. active book project
+  let { data: project, error: projectSelectError } = await supabaseClient
+    .from("book_projects")
+    .select("*")
+    .eq("owner_user_id", userId)
+    .eq("subject_person_id", person.id)
+    .eq("project_type", "koebook")
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (projectSelectError) {
+    console.error("book_projects select error", projectSelectError);
+    throw projectSelectError;
+  }
+
+  if (!project) {
+    const { data: newProject, error: projectInsertError } = await supabaseClient
+      .from("book_projects")
+      .insert({
+        family_id: family.id,
+        owner_user_id: userId,
+        subject_person_id: person.id,
+        project_type: "koebook",
+        title: `${displayName}さんのKoeBOOK`,
+        status: "active"
+      })
+      .select()
+      .single();
+
+    if (projectInsertError) {
+      console.error("book_projects insert error", projectInsertError);
+      throw projectInsertError;
+    }
+
+    project = newProject;
+  }
+
+  // 4. project participants
+  const participantRoles = ["owner", "subject", "speaker"];
+
+  for (const role of participantRoles) {
+    const { data: existingParticipant, error: participantSelectError } =
+      await supabaseClient
+        .from("project_participants")
+        .select("*")
+        .eq("book_project_id", project.id)
+        .eq("person_id", person.id)
+        .eq("role", role)
+        .limit(1)
+        .maybeSingle();
+
+    if (participantSelectError) {
+      console.error("project_participants select error", participantSelectError);
+      throw participantSelectError;
+    }
+
+    if (!existingParticipant) {
+      const { error: participantInsertError } = await supabaseClient
+        .from("project_participants")
+        .insert({
+          book_project_id: project.id,
+          user_id: userId,
+          person_id: person.id,
+          role,
+          invite_status: "active"
+        });
+
+      if (participantInsertError) {
+        console.error("project_participants insert error", participantInsertError);
+        throw participantInsertError;
+      }
+    }
+  }
+
+  const { data: speakerParticipant, error: speakerParticipantError } =
+    await supabaseClient
+      .from("project_participants")
+      .select("*")
+      .eq("book_project_id", project.id)
+      .eq("person_id", person.id)
+      .eq("role", "speaker")
+      .limit(1)
+      .maybeSingle();
+
+  if (speakerParticipantError) {
+    console.error("speaker participant select error", speakerParticipantError);
+    throw speakerParticipantError;
+  }
+
+  return {
+    family,
+    person,
+    project,
+    speakerParticipant
+  };
+}
 async function ensureUserQuestions(userId) {
   const { data: existing, error: existingError } = await supabaseClient
     .from("user_questions")
@@ -200,7 +383,7 @@ function normalizeUserQuestions(rows) {
   }));
 }
 
-async function loadUserQuestionSet(userId) {
+async function loadUserQuestionSet(userId, foundationData = null) {
   await ensureUserQuestions(userId);
 
   const { data: userQuestions, error: uqError } = await supabaseClient
@@ -272,6 +455,7 @@ function App() {
   const [questionsDB, setQuestionsDB] = useState([]);
   const [notificationPref, setNotificationPref] = useState(null);
   const [progress, setProgress] = useState({ currentIndex: 0, total: 0 });
+  const [foundation, setFoundation] = useState(null);
 
   const [voiceData, setVoiceData] = useState({
     duration: 0,
@@ -310,14 +494,21 @@ function App() {
 
         setNotificationPref(notificationData || null);
 
-        const currentUser = {
-          id: session.user.id,
-          ...profile,
-          name: profile?.name || "あなた"
-        };
+const currentUser = {
+  id: session.user.id,
+  ...profile,
+  name: profile?.name || "あなた"
+};
 
-        const questionSet = await loadUserQuestionSet(session.user.id);
-        const currentIndex = getInitialQuestionIndex(questionSet, profile);
+const foundationData = await ensureUserFoundation(session.user.id, currentUser);
+setFoundation(foundationData);
+
+const questionSet = await loadUserQuestionSet(
+  session.user.id,
+  foundationData
+);
+
+const currentIndex = getInitialQuestionIndex(questionSet, profile);
 
         setUser(currentUser);
         setQuestionsDB(questionSet);
@@ -554,45 +745,60 @@ function App() {
 
   return (
     <div className="app-container">
-      {scene === -1 && (
-        <Scene_Login
-          onLogin={async (u) => {
-            setIsInitializing(true);
-            try {
-              setUser(u);
-              const questionSet = await loadUserQuestionSet(u.id);
-              setQuestionsDB(questionSet);
-              setProgress({
-                currentIndex: 0,
-                total: questionSet.length
-              });
-              setScene(0);
-            } finally {
-              setIsInitializing(false);
-            }
-          }}
-        />
-      )}
+{scene === -1 && (
+  <Scene_Login
+    onLogin={async (u) => {
+      setIsInitializing(true);
+      try {
+        setUser(u);
 
-      {scene === "notification_setup" && (
-        <Scene_NotificationSetup
-          user={user}
-          onComplete={async () => {
-            setIsInitializing(true);
-            try {
-              const questionSet = await loadUserQuestionSet(user.id);
-              setQuestionsDB(questionSet);
-              setProgress({
-                currentIndex: 0,
-                total: questionSet.length
-              });
-              setScene(0);
-            } finally {
-              setIsInitializing(false);
-            }
-          }}
-        />
-      )}
+        const foundationData = await ensureUserFoundation(u.id, u);
+        setFoundation(foundationData);
+
+        const questionSet = await loadUserQuestionSet(
+          u.id,
+          foundationData
+        );
+
+        setQuestionsDB(questionSet);
+        setProgress({
+          currentIndex: 0,
+          total: questionSet.length
+        });
+        setScene(0);
+      } finally {
+        setIsInitializing(false);
+      }
+    }}
+  />
+)}
+
+{scene === "notification_setup" && (
+  <Scene_NotificationSetup
+    user={user}
+    onComplete={async () => {
+      setIsInitializing(true);
+      try {
+        const foundationData = foundation || await ensureUserFoundation(user.id, user);
+        setFoundation(foundationData);
+
+        const questionSet = await loadUserQuestionSet(
+          user.id,
+          foundationData
+        );
+
+        setQuestionsDB(questionSet);
+        setProgress({
+          currentIndex: 0,
+          total: questionSet.length
+        });
+        setScene(0);
+      } finally {
+        setIsInitializing(false);
+      }
+    }}
+  />
+)}
 
       {scene === 0 && <Scene0_Door onNext={() => setScene(1)} />}
 
