@@ -104,7 +104,7 @@ const { useState, useEffect, useRef } = React;
 
 const SUPABASE_URL = "https://wquxjeqkumossjxehdop.supabase.co";
 
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxdXhqZXFrdW1vc3NqeGVoZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTEyMjksImV4cCI6MjA5MjU4NzIyOX0.wImRfRH2cr-w1uh2_c3vSS0_t4pHDeRWmWHZre1WbT4";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXhqZXFrdW1vc3NqeGVoZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTEyMjksImV4cCI6MjA5MjU4NzIyOX0.wImRfRH2cr-w1uh2_c3vSS0_t4pHDeRWmWHZre1WbT4";
 
 const GAS_AI_URL = "https://script.google.com/macros/s/AKfycbwz5wfVtHfGPmxpK6l3rKiqVn235sqwhmdIuPYvKSex02B_k6a5ULc-m7l_K3ig_AE/exec";
 
@@ -130,20 +130,20 @@ function getSequenceFromUrl() {
   const seq = parseInt(params.get("sequence"), 10);
   return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
+
 async function ensureUserFoundation(userId, profile) {
-const displayName =
-  profile?.display_name ||
-  profile?.name ||
-  [profile?.family_name, profile?.given_name].filter(Boolean).join(" ") ||
-  "あなた";
+  const displayName =
+    profile?.display_name ||
+    profile?.name ||
+    [profile?.family_name, profile?.given_name].filter(Boolean).join(" ") ||
+    "あなた";
 
-const familyName = profile?.family_name || null;
-const givenName = profile?.given_name || null;
-const preferredName =
-  profile?.preferred_name ||
-  (givenName ? `${givenName}さん` : displayName);
+  const familyName = profile?.family_name || null;
+  const givenName = profile?.given_name || null;
+  const preferredName =
+    profile?.preferred_name ||
+    (givenName ? `${givenName}さん` : displayName);
 
-  // 1. family
   let { data: family, error: familySelectError } = await supabaseClient
     .from("families")
     .select("*")
@@ -175,7 +175,6 @@ const preferredName =
     family = newFamily;
   }
 
-  // 2. person linked to this user
   let { data: link, error: linkSelectError } = await supabaseClient
     .from("user_person_links")
     .select(`
@@ -198,13 +197,13 @@ const preferredName =
   if (!person) {
     const { data: newPerson, error: personInsertError } = await supabaseClient
       .from("persons")
-.insert({
-  family_id: family.id,
-  display_name: displayName,
-  family_name: familyName,
-  given_name: givenName,
-  preferred_name: preferredName
-})
+      .insert({
+        family_id: family.id,
+        display_name: displayName,
+        family_name: familyName,
+        given_name: givenName,
+        preferred_name: preferredName
+      })
       .select()
       .single();
 
@@ -229,7 +228,6 @@ const preferredName =
     }
   }
 
-  // 3. active book project
   let { data: project, error: projectSelectError } = await supabaseClient
     .from("book_projects")
     .select("*")
@@ -268,7 +266,6 @@ const preferredName =
     project = newProject;
   }
 
-  // 4. project participants
   const participantRoles = ["owner", "subject", "speaker"];
 
   for (const role of participantRoles) {
@@ -327,6 +324,7 @@ const preferredName =
     speakerParticipant
   };
 }
+
 async function ensureUserQuestions(userId) {
   const { data: existing, error: existingError } = await supabaseClient
     .from("user_questions")
@@ -507,21 +505,21 @@ function App() {
 
         setNotificationPref(notificationData || null);
 
-const currentUser = {
-  id: session.user.id,
-  ...profile,
-  name: profile?.name || "あなた"
-};
+        const currentUser = {
+          id: session.user.id,
+          ...profile,
+          name: profile?.display_name || profile?.name || "あなた"
+        };
 
-const foundationData = await ensureUserFoundation(session.user.id, currentUser);
-setFoundation(foundationData);
+        const foundationData = await ensureUserFoundation(session.user.id, currentUser);
+        setFoundation(foundationData);
 
-const questionSet = await loadUserQuestionSet(
-  session.user.id,
-  foundationData
-);
+        const questionSet = await loadUserQuestionSet(
+          session.user.id,
+          foundationData
+        );
 
-const currentIndex = getInitialQuestionIndex(questionSet, profile);
+        const currentIndex = getInitialQuestionIndex(questionSet, profile);
 
         setUser(currentUser);
         setQuestionsDB(questionSet);
@@ -758,62 +756,66 @@ const currentIndex = getInitialQuestionIndex(questionSet, profile);
 
   return (
     <div className="app-container">
-{scene === -1 && (
-  <Scene_Login
-    onLogin={async (u) => {
-      setIsInitializing(true);
-      try {
-        setUser(u);
+      {scene === -1 && (
+        <Scene_Login
+          onLogin={async (u) => {
+            setIsInitializing(true);
+            try {
+              setUser(u);
 
-        const foundationData = await ensureUserFoundation(u.id, u);
-        setFoundation(foundationData);
+              const foundationData = await ensureUserFoundation(u.id, u);
+              setFoundation(foundationData);
 
-        const questionSet = await loadUserQuestionSet(
-          u.id,
-          foundationData
-        );
+              const questionSet = await loadUserQuestionSet(
+                u.id,
+                foundationData
+              );
 
-        setQuestionsDB(questionSet);
-        setProgress({
-          currentIndex: 0,
-          total: questionSet.length
-        });
-        setScene(0);
-      } finally {
-        setIsInitializing(false);
-      }
-    }}
-  />
-)}
+              setQuestionsDB(questionSet);
+              setProgress({
+                currentIndex: 0,
+                total: questionSet.length
+              });
+              setScene(0);
+            } finally {
+              setIsInitializing(false);
+            }
+          }}
+        />
+      )}
 
-{scene === "notification_setup" && (
-  <Scene_NotificationSetup
-    user={user}
-    onComplete={async () => {
-      setIsInitializing(true);
-      try {
-        const foundationData = foundation || await ensureUserFoundation(user.id, user);
-        setFoundation(foundationData);
+      {scene === "notification_setup" && (
+        <Scene_NotificationSetup
+          user={user}
+          onComplete={async () => {
+            setIsInitializing(true);
+            try {
+              const foundationData =
+                foundation || (await ensureUserFoundation(user.id, user));
 
-        const questionSet = await loadUserQuestionSet(
-          user.id,
-          foundationData
-        );
+              setFoundation(foundationData);
 
-        setQuestionsDB(questionSet);
-        setProgress({
-          currentIndex: 0,
-          total: questionSet.length
-        });
-        setScene(0);
-      } finally {
-        setIsInitializing(false);
-      }
-    }}
-  />
-)}
+              const questionSet = await loadUserQuestionSet(
+                user.id,
+                foundationData
+              );
 
-      {scene === 0 && <Scene0_Door onNext={() => setScene(1)} />}
+              setQuestionsDB(questionSet);
+              setProgress({
+                currentIndex: 0,
+                total: questionSet.length
+              });
+              setScene(0);
+            } finally {
+              setIsInitializing(false);
+            }
+          }}
+        />
+      )}
+
+      {scene === 0 && (
+        <Scene0_Door onNext={() => setScene(1)} />
+      )}
 
       {scene === 1 && (
         <Scene1_MyPage
@@ -855,7 +857,9 @@ const currentIndex = getInitialQuestionIndex(questionSet, profile);
         />
       )}
 
-      {scene === "processing" && <Scene_Processing />}
+      {scene === "processing" && (
+        <Scene_Processing />
+      )}
 
       {scene === 4 && (
         <Scene4_AIMirror
@@ -910,140 +914,138 @@ function Scene_Login({ onLogin }) {
     }
   };
 
-const handleVerifyPin = async () => {
-  setLoading(true);
+  const handleVerifyPin = async () => {
+    setLoading(true);
 
-const { data, error } = await supabaseClient.auth.verifyOtp({
-  email,
-  token: pin,
-  type: "email"
-});
+    const { data, error } = await supabaseClient.auth.verifyOtp({
+      email,
+      token: pin,
+      type: "email"
+    });
 
-if (error) {
-  setLoading(false);
-  console.error(error);
-  alert("コードが正しくありません。");
-  return;
-}
-
-// 認証直後にセッションを明示的に取り直す
-const {
-  data: { session },
-  error: sessionError
-} = await supabaseClient.auth.getSession();
-
-if (sessionError || !session) {
-  setLoading(false);
-  console.error("session error", sessionError);
-  alert("ログイン情報の取得に失敗しました。もう一度お試しください。");
-  return;
-}
-const userId = session.user.id;
-
-const fullName = `${familyName} ${givenName}`.trim();
-const preferredName = givenName ? `${givenName}さん` : fullName || "あなた";  
-
-  const { data: existingProfile, error: existingError } = await supabaseClient
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (existingError) {
-    setLoading(false);
-    console.error(existingError);
-    alert("プロフィールの確認に失敗しました。");
-    return;
-  }
-
-  let profile;
-
-  if (existingProfile) {
-    profile = existingProfile;
-
-    alert(
-      "このメールアドレスでは、すでに物語が始まっています。\n前回の続きとして開きます。"
-    );
-  } else {
-    const { data: newProfile, error: profileError } = await supabaseClient
-      .from("profiles")
-.insert({
-  id: userId,
-  email: email,
-  name: fullName || "あなた",
-  family_name: familyName || null,
-  given_name: givenName || null,
-  display_name: fullName || "あなた",
-  preferred_name: preferredName
-})
-      .select()
-      .single();
-
-    if (profileError) {
+    if (error) {
       setLoading(false);
-      console.error(profileError);
-      alert("プロフィールの保存に失敗しました。");
+      console.error(error);
+      alert("コードが正しくありません。");
       return;
     }
 
-    profile = newProfile;
-  }
+    const {
+      data: { session },
+      error: sessionError
+    } = await supabaseClient.auth.getSession();
 
-  await ensureUserQuestions(userId);
+    if (sessionError || !session) {
+      setLoading(false);
+      console.error("session error", sessionError);
+      alert("ログイン情報の取得に失敗しました。もう一度お試しください。");
+      return;
+    }
 
-setLoading(false);
+    const userId = session.user.id;
 
-// セッション反映のため、ほんの少し待ってから初期化へ進む
-setTimeout(() => {
-onLogin({
-  id: userId,
-  ...profile,
-  name: profile?.display_name || profile?.name || "あなた",
-  family_name: profile?.family_name || familyName || null,
-  given_name: profile?.given_name || givenName || null,
-  display_name: profile?.display_name || fullName || profile?.name || "あなた",
-  preferred_name: profile?.preferred_name || preferredName
-});
-}, 100);
-};
+    const fullName = `${familyName} ${givenName}`.trim();
+    const preferredName = givenName ? `${givenName}さん` : fullName || "あなた";
+
+    const { data: existingProfile, error: existingError } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (existingError) {
+      setLoading(false);
+      console.error(existingError);
+      alert("プロフィールの確認に失敗しました。");
+      return;
+    }
+
+    let profile;
+
+    if (existingProfile) {
+      profile = existingProfile;
+
+      alert(
+        "このメールアドレスでは、すでに物語が始まっています。\n前回の続きとして開きます。"
+      );
+    } else {
+      const { data: newProfile, error: profileError } = await supabaseClient
+        .from("profiles")
+        .insert({
+          id: userId,
+          email: email,
+          name: fullName || "あなた",
+          family_name: familyName || null,
+          given_name: givenName || null,
+          display_name: fullName || "あなた",
+          preferred_name: preferredName
+        })
+        .select()
+        .single();
+
+      if (profileError) {
+        setLoading(false);
+        console.error(profileError);
+        alert("プロフィールの保存に失敗しました。");
+        return;
+      }
+
+      profile = newProfile;
+    }
+
+    await ensureUserQuestions(userId);
+
+    setLoading(false);
+
+    setTimeout(() => {
+      onLogin({
+        id: userId,
+        ...profile,
+        name: profile?.display_name || profile?.name || "あなた",
+        family_name: profile?.family_name || familyName || null,
+        given_name: profile?.given_name || givenName || null,
+        display_name: profile?.display_name || fullName || profile?.name || "あなた",
+        preferred_name: profile?.preferred_name || preferredName
+      });
+    }, 100);
+  };
 
   return (
     <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center">
-    <div className="mb-12">
-    <p className="text-[1.1rem] text-white/90 text-narrative mb-4">
-      この物語を開くために<br/>お名前とメールアドレスを教えてください。
-    </p>
-    <p className="text-white/35 text-xs leading-loose">
-      同じメールアドレスでは、前回の続きが開きます。
-    </p>
-    </div>
+      <div className="mb-12">
+        <p className="text-[1.1rem] text-white/90 text-narrative mb-4">
+          この物語を開くために<br/>お名前とメールアドレスを教えてください。
+        </p>
+        <p className="text-white/35 text-xs leading-loose">
+          同じメールアドレスでは、前回の続きが開きます。
+        </p>
+      </div>
 
       {step === 1 ? (
         <div className="w-full max-w-[280px] space-y-8 mb-12">
-          <div>
-<div className="grid grid-cols-2 gap-4">
-  <div>
-    <p className="text-white/40 text-xs mb-2">姓</p>
-    <input
-      type="text"
-      className="quiet-input"
-      value={familyName}
-      onChange={e => setFamilyName(e.target.value)}
-      placeholder="菅原"
-    />
-  </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-white/40 text-xs mb-2">姓</p>
+              <input
+                type="text"
+                className="quiet-input"
+                value={familyName}
+                onChange={e => setFamilyName(e.target.value)}
+                placeholder="菅原"
+              />
+            </div>
 
-  <div>
-    <p className="text-white/40 text-xs mb-2">名</p>
-    <input
-      type="text"
-      className="quiet-input"
-      value={givenName}
-      onChange={e => setGivenName(e.target.value)}
-      placeholder="英俊"
-    />
-  </div>
-</div>
+            <div>
+              <p className="text-white/40 text-xs mb-2">名</p>
+              <input
+                type="text"
+                className="quiet-input"
+                value={givenName}
+                onChange={e => setGivenName(e.target.value)}
+                placeholder="英俊"
+              />
+            </div>
+          </div>
 
           <div>
             <p className="text-white/40 text-xs mb-2">メールアドレス</p>
@@ -1057,7 +1059,7 @@ onLogin({
 
           <button
             onClick={handleSendPin}
-　　　　　　　　disabled={!email || !familyName || !givenName || loading}
+            disabled={!email || !familyName || !givenName || loading}
             className="btn-quiet w-full py-4 rounded-full text-sm"
           >
             {loading ? "送信中..." : "認証コードを送る"}
@@ -1493,22 +1495,7 @@ function Scene6_Completion({ onTalkMore, onBackToBookshelf }) {
   );
 }
 
-const startApp = () => {
-  const container = document.getElementById("root");
-
-  if (container) {
-    const root = ReactDOM.createRoot(container);
-    root.render(<App />);
-  }
-};
-
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", startApp);
-} else {
-  startApp();
-}
 function Scene_NotificationSetup({ user, onComplete }) {
-
   const presets = [
     {
       label: "日曜の夜 20:00",
@@ -1527,36 +1514,23 @@ function Scene_NotificationSetup({ user, onComplete }) {
     }
   ];
 
-  const weekdays = [
-    "日",
-    "月",
-    "火",
-    "水",
-    "木",
-    "金",
-    "土"
-  ];
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
 
   const [selectedPreset, setSelectedPreset] = useState(null);
-
   const [customMode, setCustomMode] = useState(false);
-
   const [weekday, setWeekday] = useState(0);
-
   const [time, setTime] = useState("20:00");
-
   const [loading, setLoading] = useState(false);
+
   const timeOptions = [];
 
   for (let h = 5; h <= 23; h++) {
     timeOptions.push(`${String(h).padStart(2, "0")}:00`);
-    timeOptions.push(`${String(h).padStart(2, "0")}:30`); 
+    timeOptions.push(`${String(h).padStart(2, "0")}:30`);
   }
 
   async function savePreference() {
-
     try {
-
       setLoading(true);
 
       let finalWeekday;
@@ -1564,15 +1538,12 @@ function Scene_NotificationSetup({ user, onComplete }) {
       let finalMinute = 0;
 
       if (customMode) {
-
         finalWeekday = weekday;
 
         const [h, m] = time.split(":").map(Number);
-        finalHour = h;  
+        finalHour = h;
         finalMinute = m;
-
       } else {
-
         if (!selectedPreset) {
           alert("時間を選択してください");
           return;
@@ -1584,40 +1555,35 @@ function Scene_NotificationSetup({ user, onComplete }) {
       }
     
       const { error } = await supabaseClient
-       .from("notification_preferences")
-       .upsert({
-         user_id: user.id,
-         email_enabled: true,
-         line_enabled: false,
-         weekday: finalWeekday,
-         hour: finalHour,
-         minute: finalMinute,
-         timezone: "Asia/Tokyo",
-         delivery_channel: "email"
-       }, {
-         onConflict: "user_id"
-       });
+        .from("notification_preferences")
+        .upsert({
+          user_id: user.id,
+          email_enabled: true,
+          line_enabled: false,
+          weekday: finalWeekday,
+          hour: finalHour,
+          minute: finalMinute,
+          timezone: "Asia/Tokyo",
+          delivery_channel: "email"
+        }, {
+          onConflict: "user_id"
+        });
 
       if (error) {
         throw error;
       }
 
       onComplete();
-
     } catch (e) {
-
       console.error(e);
       alert("設定の保存に失敗しました");
-
     } finally {
-
       setLoading(false);
     }
   }
 
   return (
     <div className="h-full flex flex-col justify-center fade-enter text-center px-4">
-
       <p className="text-[1.1rem] text-white/90 text-narrative mb-3">
         問いが届く時間を選んでください
       </p>
@@ -1627,11 +1593,8 @@ function Scene_NotificationSetup({ user, onComplete }) {
       </p>
 
       {!customMode ? (
-
         <>
-
           <div className="space-y-4 mb-10">
-
             {presets.map(preset => (
               <button
                 key={preset.label}
@@ -1646,7 +1609,6 @@ function Scene_NotificationSetup({ user, onComplete }) {
                 ○ {preset.label}
               </button>
             ))}
-
           </div>
 
           <button
@@ -1670,21 +1632,15 @@ function Scene_NotificationSetup({ user, onComplete }) {
               曜日と時間を設定する
             </button>
           </div>
-
         </>
-
       ) : (
-
         <div className="fade-enter">
-
           <div className="mb-12">
-
             <p className="text-white/50 text-sm mb-6">
               問いが届く曜日
             </p>
 
             <div className="flex justify-center gap-2 flex-wrap">
-
               {weekdays.map((day, index) => (
                 <button
                   key={day}
@@ -1699,29 +1655,25 @@ function Scene_NotificationSetup({ user, onComplete }) {
                   {day}
                 </button>
               ))}
-
             </div>
-
           </div>
 
           <div className="mb-14">
-
             <p className="text-white/50 text-sm mb-6">
               問いが届く時間
             </p>
 
-          <select
-            value={time}
-            onChange={e => setTime(e.target.value)}
-            className="quiet-input max-w-[180px] mx-auto text-center"
-          >
-            {timeOptions.map(t => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-
+            <select
+              value={time}
+              onChange={e => setTime(e.target.value)}
+              className="quiet-input max-w-[180px] mx-auto text-center"
+            >
+              {timeOptions.map(t => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           </div>
 
           <button
@@ -1731,16 +1683,26 @@ function Scene_NotificationSetup({ user, onComplete }) {
           >
             {loading ? "保存中..." : "この時間に受け取る"}
           </button>
-
         </div>
-
       )}
-
     </div>
   );
 }
-  
-  
+
+const startApp = () => {
+  const container = document.getElementById("root");
+
+  if (container) {
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
+  }
+};
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startApp);
+} else {
+  startApp();
+}
 </script>
 </body>
 </html>
