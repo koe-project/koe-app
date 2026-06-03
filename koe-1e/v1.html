@@ -325,12 +325,21 @@ async function ensureUserFoundation(userId, profile) {
   };
 }
 
-async function ensureUserQuestions(userId) {
-  const { data: existing, error: existingError } = await supabaseClient
+async function ensureUserQuestions(userId, foundationData = null) {
+  const projectId = foundationData?.project?.id || null;
+  const participantId = foundationData?.speakerParticipant?.id || null;
+
+  let query = supabaseClient
     .from("user_questions")
     .select("id")
     .eq("user_id", userId)
     .limit(1);
+
+  if (projectId) {
+    query = query.eq("book_project_id", projectId);
+  }
+
+  const { data: existing, error: existingError } = await query;
 
   if (existingError) {
     console.warn("user_questions check error", existingError);
@@ -340,7 +349,15 @@ async function ensureUserQuestions(userId) {
 
   const { data: masterQuestions, error: qError } = await supabaseClient
     .from("questions")
-    .select("*")
+    .select(`
+      *,
+      chapters (
+        id,
+        label,
+        description,
+        display_order
+      )
+    `)
     .eq("is_active", true)
     .order("sequence_order", { ascending: true });
 
@@ -351,17 +368,38 @@ async function ensureUserQuestions(userId) {
 
   if (!masterQuestions || masterQuestions.length === 0) return;
 
-  const inserts = masterQuestions.map((q, index) => ({
-    user_id: userId,
-    question_id: q.id,
-    sequence_order: index + 1,
-    chapter: q.chapter || null,
-    is_active: true
-  }));
+  const inserts = masterQuestions.map((q, index) => {
+    const chapterTitle =
+      q.chapters?.label ||
+      q.chapter ||
+      null;
+
+    const chapterSubtitle =
+      q.chapters?.description ||
+      null;
+
+    return {
+      user_id: userId,
+      book_project_id: projectId,
+      participant_id: participantId,
+      question_id: q.id,
+      sequence_order: index + 1,
+      chapter: q.chapter || null,
+      chapter_title_snapshot: chapterTitle,
+      chapter_subtitle_snapshot: chapterSubtitle,
+      question_text_snapshot: q.content || "",
+      status: "pending",
+      is_active: true
+    };
+  });
 
   const { error: insertError } = await supabaseClient
     .from("user_questions")
-    .upsert(inserts, { onConflict: "user_id,question_id" });
+    .upsert(inserts, {
+      onConflict: projectId
+        ? "book_project_id,question_id"
+        : "user_id,question_id"
+    });
 
   if (insertError) {
     console.error("user_questions insert error", insertError);
@@ -369,43 +407,61 @@ async function ensureUserQuestions(userId) {
 }
 
 function normalizeUserQuestions(rows) {
-  return (rows || []).map(row => ({
-    user_question_id: row.id,
-    id: row.questions?.id || row.question_id,
-    question_id: row.question_id,
-    sequence_order: row.sequence_order,
-    content: row.custom_question_text || row.questions?.content || "",
-    chapter:
-      row.questions?.chapters?.description ||
+  return (rows || []).map(row => {
+    const chapterTitle =
+      row.chapter_title_snapshot ||
       row.questions?.chapters?.label ||
       row.chapter ||
       row.questions?.chapter ||
-      "",
-    chapter_label:
-      row.questions?.chapters?.label ||
-      row.chapter ||
-      row.questions?.chapter ||
-      "",
-    chapter_description:
+      "";
+
+    const chapterDescription =
+      row.chapter_subtitle_snapshot ||
       row.questions?.chapters?.description ||
       row.chapter ||
       row.questions?.chapter ||
-      ""
-  }));
+      "";
+
+    const content =
+      row.custom_question_text ||
+      row.question_text_snapshot ||
+      row.questions?.content ||
+      "";
+
+    return {
+      user_question_id: row.id,
+      book_project_id: row.book_project_id || null,
+      participant_id: row.participant_id || null,
+      id: row.questions?.id || row.question_id,
+      question_id: row.question_id,
+      sequence_order: row.sequence_order,
+      content,
+      chapter: chapterDescription || chapterTitle,
+      chapter_label: chapterTitle,
+      chapter_description: chapterDescription
+    };
+  });
 }
-
 async function loadUserQuestionSet(userId, foundationData = null) {
-  await ensureUserQuestions(userId);
+  await ensureUserQuestions(userId, foundationData);
 
-  const { data: userQuestions, error: uqError } = await supabaseClient
+  const projectId = foundationData?.project?.id || null;
+
+  let query = supabaseClient
     .from("user_questions")
     .select(`
       id,
+      book_project_id,
+      participant_id,
       sequence_order,
       chapter,
+      chapter_title_snapshot,
+      chapter_subtitle_snapshot,
+      question_text_snapshot,
       custom_question_text,
       question_id,
       is_active,
+      status,
       questions (
         id,
         content,
@@ -419,9 +475,16 @@ async function loadUserQuestionSet(userId, foundationData = null) {
         )
       )
     `)
-    .eq("user_id", userId)
     .eq("is_active", true)
     .order("sequence_order", { ascending: true });
+
+  if (projectId) {
+    query = query.eq("book_project_id", projectId);
+  } else {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data: userQuestions, error: uqError } = await query;
 
   if (uqError) throw uqError;
 
@@ -451,7 +514,10 @@ async function markUserQuestionAnswered(userQuestionId) {
 
   const { error } = await supabaseClient
     .from("user_questions")
-    .update({ answered_at: new Date().toISOString() })
+    .update({
+      answered_at: new Date().toISOString(),
+      status: "answered"
+    })
     .eq("id", userQuestionId);
 
   if (error) {
@@ -670,12 +736,16 @@ function App() {
       const ansId = voiceData.answerId || crypto.randomUUID();
 
       const { data: savedAnswer, error: dbError } = await supabaseClient
-        .from("answers")
-        .upsert({
-          id: ansId,
-          user_id: user.id,
-          question_id: currentQ?.question_id || currentQ?.id,
-          sequence_order: currentSeq,
+.from("answers")
+.upsert({
+  id: ansId,
+  user_id: user.id,
+  book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
+  speaker_person_id: foundation?.person?.id || null,
+  subject_person_id: foundation?.project?.subject_person_id || foundation?.person?.id || null,
+  user_question_id: currentQ?.user_question_id || null,
+  question_id: currentQ?.question_id || currentQ?.id,
+  sequence_order: currentSeq,
           transcript_raw: voiceData.transcript,
           transcript_edited: voiceData.editedText,
           ai_mirror: voiceData.aiMirror,
@@ -699,12 +769,15 @@ function App() {
       if (voiceData.storagePath) {
         const { error: assetError } = await supabaseClient
           .from("media_assets")
-          .upsert({
-            answer_id: finalAnswerId,
-            user_id: user.id,
-            asset_type: "audio",
-            storage_path: voiceData.storagePath
-          }, { onConflict: "answer_id, asset_type, storage_path" });
+.upsert({
+  answer_id: finalAnswerId,
+  user_id: user.id,
+  family_id: foundation?.family?.id || null,
+  book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
+  person_id: foundation?.person?.id || null,
+  asset_type: "audio",
+  storage_path: voiceData.storagePath
+}, { onConflict: "answer_id, asset_type, storage_path" });
 
         if (assetError) {
           console.error("media asset save error", assetError);
@@ -993,7 +1066,7 @@ function Scene_Login({ onLogin }) {
       profile = newProfile;
     }
 
-    await ensureUserQuestions(userId);
+    // await ensureUserQuestions(userId);
 
     setLoading(false);
 
