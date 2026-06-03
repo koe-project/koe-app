@@ -899,20 +899,33 @@ function Scene_Login({ onLogin }) {
 const handleVerifyPin = async () => {
   setLoading(true);
 
-  const { data, error } = await supabaseClient.auth.verifyOtp({
-    email,
-    token: pin,
-    type: "email"
-  });
+const { data, error } = await supabaseClient.auth.verifyOtp({
+  email,
+  token: pin,
+  type: "email"
+});
 
-  if (error) {
-    setLoading(false);
-    console.error(error);
-    alert("コードが正しくありません。");
-    return;
-  }
+if (error) {
+  setLoading(false);
+  console.error(error);
+  alert("コードが正しくありません。");
+  return;
+}
 
-  const userId = data.user.id;
+// 認証直後にセッションを明示的に取り直す
+const {
+  data: { session },
+  error: sessionError
+} = await supabaseClient.auth.getSession();
+
+if (sessionError || !session) {
+  setLoading(false);
+  console.error("session error", sessionError);
+  alert("ログイン情報の取得に失敗しました。もう一度お試しください。");
+  return;
+}
+
+const userId = session.user.id;
 
   const { data: existingProfile, error: existingError } = await supabaseClient
     .from("profiles")
@@ -958,13 +971,16 @@ const handleVerifyPin = async () => {
 
   await ensureUserQuestions(userId);
 
-  setLoading(false);
+setLoading(false);
 
+// セッション反映のため、ほんの少し待ってから初期化へ進む
+setTimeout(() => {
   onLogin({
     id: userId,
     ...profile,
     name: profile?.name || "あなた"
   });
+}, 100);
 };
 
   return (
