@@ -130,7 +130,58 @@ function getSequenceFromUrl() {
   const seq = parseInt(params.get("sequence"), 10);
   return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
+async function ensureProfileExists(sessionUser, registrationData = {}) {
+  const userId = sessionUser.id;
+  const email = sessionUser.email || registrationData.email || "";
 
+  const familyName = registrationData.familyName || null;
+  const givenName = registrationData.givenName || null;
+
+  const fullName =
+    registrationData.fullName ||
+    [familyName, givenName].filter(Boolean).join(" ") ||
+    "あなた";
+
+  const preferredName =
+    registrationData.preferredName ||
+    (givenName ? `${givenName}さん` : fullName);
+
+  const { data: existingProfile, error: existingError } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (existingError) {
+    console.error("profile select error", existingError);
+    throw existingError;
+  }
+
+  if (existingProfile) {
+    return existingProfile;
+  }
+
+  const { data: newProfile, error: profileError } = await supabaseClient
+    .from("profiles")
+    .insert({
+      id: userId,
+      email,
+      name: fullName,
+      family_name: familyName,
+      given_name: givenName,
+      display_name: fullName,
+      preferred_name: preferredName
+    })
+    .select()
+    .single();
+
+  if (profileError) {
+    console.error("profile insert error", profileError);
+    throw profileError;
+  }
+
+  return newProfile;
+}
 async function ensureUserFoundation(userId, profile) {
   const displayName =
     profile?.display_name ||
@@ -574,11 +625,7 @@ function App() {
           return;
         }
 
-        const { data: profile } = await supabaseClient
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .maybeSingle();
+const profile = await ensureProfileExists(session.user);
         
         const { data: notificationData } = await supabaseClient
           .from("notification_preferences")
@@ -1036,52 +1083,22 @@ function Scene_Login({ onLogin }) {
 
     const fullName = `${familyName} ${givenName}`.trim();
     const preferredName = givenName ? `${givenName}さん` : fullName || "あなた";
+let profile;
 
-    const { data: existingProfile, error: existingError } = await supabaseClient
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (existingError) {
-      setLoading(false);
-      console.error(existingError);
-      alert("プロフィールの確認に失敗しました。");
-      return;
-    }
-
-    let profile;
-
-    if (existingProfile) {
-      profile = existingProfile;
-
-      alert(
-        "このメールアドレスでは、すでに物語が始まっています。\n前回の続きとして開きます。"
-      );
-    } else {
-      const { data: newProfile, error: profileError } = await supabaseClient
-        .from("profiles")
-        .insert({
-          id: userId,
-          email: email,
-          name: fullName || "あなた",
-          family_name: familyName || null,
-          given_name: givenName || null,
-          display_name: fullName || "あなた",
-          preferred_name: preferredName
-        })
-        .select()
-        .single();
-
-      if (profileError) {
-        setLoading(false);
-        console.error(profileError);
-        alert("プロフィールの保存に失敗しました。");
-        return;
-      }
-
-      profile = newProfile;
-    }
+try {
+  profile = await ensureProfileExists(session.user, {
+    email,
+    familyName,
+    givenName,
+    fullName,
+    preferredName
+  });
+} catch (e) {
+  setLoading(false);
+  console.error(e);
+  alert("プロフィールの保存に失敗しました。");
+  return;
+}
 
     // await ensureUserQuestions(userId);
 
