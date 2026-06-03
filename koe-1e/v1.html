@@ -345,7 +345,24 @@ async function ensureUserQuestions(userId, foundationData = null) {
     console.warn("user_questions check error", existingError);
   }
 
-  if (existing && existing.length > 0) return;
+if (existing && existing.length > 0) {
+  if (projectId && participantId) {
+    const { error: backfillError } = await supabaseClient
+      .from("user_questions")
+      .update({
+        book_project_id: projectId,
+        participant_id: participantId
+      })
+      .eq("user_id", userId)
+      .is("book_project_id", null);
+
+    if (backfillError) {
+      console.warn("user_questions project backfill error", backfillError);
+    }
+  }
+
+  return;
+}
 
   const { data: masterQuestions, error: qError } = await supabaseClient
     .from("questions")
