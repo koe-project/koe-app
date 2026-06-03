@@ -130,6 +130,7 @@ function getSequenceFromUrl() {
   const seq = parseInt(params.get("sequence"), 10);
   return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
+
 async function ensureProfileExists(sessionUser, registrationData = {}) {
   const userId = sessionUser.id;
   const email = sessionUser.email || registrationData.email || "";
@@ -182,6 +183,7 @@ async function ensureProfileExists(sessionUser, registrationData = {}) {
 
   return newProfile;
 }
+
 async function ensureUserFoundation(userId, profile) {
   const displayName =
     profile?.display_name ||
@@ -396,24 +398,24 @@ async function ensureUserQuestions(userId, foundationData = null) {
     console.warn("user_questions check error", existingError);
   }
 
-if (existing && existing.length > 0) {
-  if (projectId && participantId) {
-    const { error: backfillError } = await supabaseClient
-      .from("user_questions")
-      .update({
-        book_project_id: projectId,
-        participant_id: participantId
-      })
-      .eq("user_id", userId)
-      .is("book_project_id", null);
+  if (existing && existing.length > 0) {
+    if (projectId && participantId) {
+      const { error: backfillError } = await supabaseClient
+        .from("user_questions")
+        .update({
+          book_project_id: projectId,
+          participant_id: participantId
+        })
+        .eq("user_id", userId)
+        .is("book_project_id", null);
 
-    if (backfillError) {
-      console.warn("user_questions project backfill error", backfillError);
+      if (backfillError) {
+        console.warn("user_questions project backfill error", backfillError);
+      }
     }
-  }
 
-  return;
-}
+    return;
+  }
 
   const { data: masterQuestions, error: qError } = await supabaseClient
     .from("questions")
@@ -510,6 +512,7 @@ function normalizeUserQuestions(rows) {
     };
   });
 }
+
 async function loadUserQuestionSet(userId, foundationData = null) {
   await ensureUserQuestions(userId, foundationData);
 
@@ -625,7 +628,7 @@ function App() {
           return;
         }
 
-const profile = await ensureProfileExists(session.user);
+        const profile = await ensureProfileExists(session.user);
         
         const { data: notificationData } = await supabaseClient
           .from("notification_preferences")
@@ -800,16 +803,16 @@ const profile = await ensureProfileExists(session.user);
       const ansId = voiceData.answerId || crypto.randomUUID();
 
       const { data: savedAnswer, error: dbError } = await supabaseClient
-.from("answers")
-.upsert({
-  id: ansId,
-  user_id: user.id,
-  book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
-  speaker_person_id: foundation?.person?.id || null,
-  subject_person_id: foundation?.project?.subject_person_id || foundation?.person?.id || null,
-  user_question_id: currentQ?.user_question_id || null,
-  question_id: currentQ?.question_id || currentQ?.id,
-  sequence_order: currentSeq,
+        .from("answers")
+        .upsert({
+          id: ansId,
+          user_id: user.id,
+          book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
+          speaker_person_id: foundation?.person?.id || null,
+          subject_person_id: foundation?.project?.subject_person_id || foundation?.person?.id || null,
+          user_question_id: currentQ?.user_question_id || null,
+          question_id: currentQ?.question_id || currentQ?.id,
+          sequence_order: currentSeq,
           transcript_raw: voiceData.transcript,
           transcript_edited: voiceData.editedText,
           ai_mirror: voiceData.aiMirror,
@@ -833,15 +836,15 @@ const profile = await ensureProfileExists(session.user);
       if (voiceData.storagePath) {
         const { error: assetError } = await supabaseClient
           .from("media_assets")
-.upsert({
-  answer_id: finalAnswerId,
-  user_id: user.id,
-  family_id: foundation?.family?.id || null,
-  book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
-  person_id: foundation?.person?.id || null,
-  asset_type: "audio",
-  storage_path: voiceData.storagePath
-}, { onConflict: "answer_id, asset_type, storage_path" });
+          .upsert({
+            answer_id: finalAnswerId,
+            user_id: user.id,
+            family_id: foundation?.family?.id || null,
+            book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
+            person_id: foundation?.person?.id || null,
+            asset_type: "audio",
+            storage_path: voiceData.storagePath
+          }, { onConflict: "answer_id, asset_type, storage_path" });
 
         if (assetError) {
           console.error("media asset save error", assetError);
@@ -908,12 +911,25 @@ const profile = await ensureProfileExists(session.user);
                 foundationData
               );
 
+              const { data: notificationData } = await supabaseClient
+                .from("notification_preferences")
+                .select("*")
+                .eq("user_id", u.id)
+                .maybeSingle();
+
+              setNotificationPref(notificationData || null);
+
               setQuestionsDB(questionSet);
               setProgress({
                 currentIndex: 0,
                 total: questionSet.length
               });
-              setScene(0);
+
+              if (!notificationData) {
+                setScene("notification_setup");
+              } else {
+                setScene(0);
+              }
             } finally {
               setIsInitializing(false);
             }
@@ -1083,24 +1099,23 @@ function Scene_Login({ onLogin }) {
 
     const fullName = `${familyName} ${givenName}`.trim();
     const preferredName = givenName ? `${givenName}さん` : fullName || "あなた";
-let profile;
 
-try {
-  profile = await ensureProfileExists(session.user, {
-    email,
-    familyName,
-    givenName,
-    fullName,
-    preferredName
-  });
-} catch (e) {
-  setLoading(false);
-  console.error(e);
-  alert("プロフィールの保存に失敗しました。");
-  return;
-}
+    let profile;
 
-    // await ensureUserQuestions(userId);
+    try {
+      profile = await ensureProfileExists(session.user, {
+        email,
+        familyName,
+        givenName,
+        fullName,
+        preferredName
+      });
+    } catch (e) {
+      setLoading(false);
+      console.error(e);
+      alert("プロフィールの保存に失敗しました。");
+      return;
+    }
 
     setLoading(false);
 
@@ -1660,11 +1675,24 @@ function Scene_NotificationSetup({ user, onComplete }) {
         finalHour = selectedPreset.hour;
         finalMinute = selectedPreset.minute || 0;
       }
+
+      const {
+        data: { session },
+        error: sessionError
+      } = await supabaseClient.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error("ログイン情報が見つかりません");
+      }
+
+      await ensureProfileExists(session.user);
+
+      const activeUserId = session.user.id;
     
       const { error } = await supabaseClient
         .from("notification_preferences")
         .upsert({
-          user_id: user.id,
+          user_id: activeUserId,
           email_enabled: true,
           line_enabled: false,
           weekday: finalWeekday,
