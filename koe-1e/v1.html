@@ -131,7 +131,17 @@ function getSequenceFromUrl() {
   return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
 async function ensureUserFoundation(userId, profile) {
-  const displayName = profile?.name || "あなた";
+const displayName =
+  profile?.display_name ||
+  profile?.name ||
+  [profile?.family_name, profile?.given_name].filter(Boolean).join(" ") ||
+  "あなた";
+
+const familyName = profile?.family_name || null;
+const givenName = profile?.given_name || null;
+const preferredName =
+  profile?.preferred_name ||
+  (givenName ? `${givenName}さん` : displayName);
 
   // 1. family
   let { data: family, error: familySelectError } = await supabaseClient
@@ -188,10 +198,13 @@ async function ensureUserFoundation(userId, profile) {
   if (!person) {
     const { data: newPerson, error: personInsertError } = await supabaseClient
       .from("persons")
-      .insert({
-        family_id: family.id,
-        display_name: displayName
-      })
+.insert({
+  family_id: family.id,
+  display_name: displayName,
+  family_name: familyName,
+  given_name: givenName,
+  preferred_name: preferredName
+})
       .select()
       .single();
 
@@ -874,7 +887,8 @@ const currentIndex = getInitialQuestionIndex(questionSet, profile);
 
 function Scene_Login({ onLogin }) {
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+  const [familyName, setFamilyName] = useState("");
+  const [givenName, setGivenName] = useState("");
   const [step, setStep] = useState(1);
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
@@ -924,8 +938,10 @@ if (sessionError || !session) {
   alert("ログイン情報の取得に失敗しました。もう一度お試しください。");
   return;
 }
-
 const userId = session.user.id;
+
+const fullName = `${familyName} ${givenName}`.trim();
+const preferredName = givenName ? `${givenName}さん` : fullName || "あなた";  
 
   const { data: existingProfile, error: existingError } = await supabaseClient
     .from("profiles")
@@ -951,11 +967,15 @@ const userId = session.user.id;
   } else {
     const { data: newProfile, error: profileError } = await supabaseClient
       .from("profiles")
-      .insert({
-        id: userId,
-        email: email,
-        name: name || "あなた"
-      })
+.insert({
+  id: userId,
+  email: email,
+  name: fullName || "あなた",
+  family_name: familyName || null,
+  given_name: givenName || null,
+  display_name: fullName || "あなた",
+  preferred_name: preferredName
+})
       .select()
       .single();
 
@@ -975,11 +995,15 @@ setLoading(false);
 
 // セッション反映のため、ほんの少し待ってから初期化へ進む
 setTimeout(() => {
-  onLogin({
-    id: userId,
-    ...profile,
-    name: profile?.name || "あなた"
-  });
+onLogin({
+  id: userId,
+  ...profile,
+  name: profile?.display_name || profile?.name || "あなた",
+  family_name: profile?.family_name || familyName || null,
+  given_name: profile?.given_name || givenName || null,
+  display_name: profile?.display_name || fullName || profile?.name || "あなた",
+  preferred_name: profile?.preferred_name || preferredName
+});
 }, 100);
 };
 
@@ -997,14 +1021,29 @@ setTimeout(() => {
       {step === 1 ? (
         <div className="w-full max-w-[280px] space-y-8 mb-12">
           <div>
-            <p className="text-white/40 text-xs mb-2">お名前</p>
-            <input
-              type="text"
-              className="quiet-input"
-              value={name}
-              onChange={e => setName(e.target.value)}
-            />
-          </div>
+<div className="grid grid-cols-2 gap-4">
+  <div>
+    <p className="text-white/40 text-xs mb-2">姓</p>
+    <input
+      type="text"
+      className="quiet-input"
+      value={familyName}
+      onChange={e => setFamilyName(e.target.value)}
+      placeholder="菅原"
+    />
+  </div>
+
+  <div>
+    <p className="text-white/40 text-xs mb-2">名</p>
+    <input
+      type="text"
+      className="quiet-input"
+      value={givenName}
+      onChange={e => setGivenName(e.target.value)}
+      placeholder="英俊"
+    />
+  </div>
+</div>
 
           <div>
             <p className="text-white/40 text-xs mb-2">メールアドレス</p>
@@ -1018,7 +1057,7 @@ setTimeout(() => {
 
           <button
             onClick={handleSendPin}
-            disabled={!email || !name || loading}
+　　　　　　　　disabled={!email || !familyName || !givenName || loading}
             className="btn-quiet w-full py-4 rounded-full text-sm"
           >
             {loading ? "送信中..." : "認証コードを送る"}
