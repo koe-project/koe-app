@@ -382,22 +382,24 @@ async function ensureUserQuestions(userId, foundationData = null) {
   const projectId = foundationData?.project?.id || null;
   const participantId = foundationData?.speakerParticipant?.id || null;
 
-  let query = supabaseClient
+  // 1. 既にこのプロジェクト用の user_questions があるか確認
+  let existingQuery = supabaseClient
     .from("user_questions")
     .select("id")
     .eq("user_id", userId)
     .limit(1);
 
   if (projectId) {
-    query = query.eq("book_project_id", projectId);
+    existingQuery = existingQuery.eq("book_project_id", projectId);
   }
 
-  const { data: existing, error: existingError } = await query;
+  const { data: existing, error: existingError } = await existingQuery;
 
   if (existingError) {
     console.warn("user_questions check error", existingError);
   }
 
+  // 2. 既存があれば、古い行の補完だけして終了
   if (existing && existing.length > 0) {
     if (projectId && participantId) {
       const { error: backfillError } = await supabaseClient
@@ -417,49 +419,106 @@ async function ensureUserQuestions(userId, foundationData = null) {
     return;
   }
 
-  const { data: masterQuestions, error: qError } = await supabaseClient
-    .from("questions")
-    .select(`
-      *,
-      chapters (
-        id,
-        label,
-        description,
-        display_order
-      )
-    `)
+  // 3. デフォルトの質問セットを取得
+  const { data: questionSet, error: setError } = await supabaseClient
+    .from("question_sets")
+    .select("id, code, name")
+    .eq("product_type", "koebook")
+    .eq("is_default", true)
     .eq("is_active", true)
-    .order("sequence_order", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  if (qError) {
-    console.error("master questions load error", qError);
+  if (setError) {
+    console.error("question set load error", setError);
     return;
   }
 
-  if (!masterQuestions || masterQuestions.length === 0) return;
+  if (!questionSet) {
+    console.error("default question set not found");
+    return;
+  }
 
-  const inserts = masterQuestions.map((q, index) => {
+  // 4. 質問セットに紐づく質問一覧を取得
+  const { data: setItems, error: itemError } = await supabaseClient
+    .from("question_set_items")
+    .select(`
+      id,
+      question_set_id,
+      question_id,
+      sequence_order,
+      chapter_id,
+      chapter_title_snapshot,
+      chapter_subtitle_snapshot,
+      question_text_snapshot,
+      is_required,
+      is_active,
+      questions (
+        id,
+        content,
+        chapter,
+        chapter_id,
+        chapters (
+          id,
+          label,
+          description,
+          display_order
+        )
+      )
+    `)
+    .eq("question_set_id", questionSet.id)
+    .eq("is_active", true)
+    .order("sequence_order", { ascending: true });
+
+  if (itemError) {
+    console.error("question set items load error", itemError);
+    return;
+  }
+
+  if (!setItems || setItems.length === 0) {
+    console.error("question set items not found");
+    return;
+  }
+
+  // 5. user_questions に配布する
+  const inserts = setItems.map((item, index) => {
+    const questionText =
+      item.question_text_snapshot ||
+      item.questions?.content ||
+      "";
+
     const chapterTitle =
-      q.chapters?.label ||
-      q.chapter ||
+      item.chapter_title_snapshot ||
+      item.questions?.chapters?.label ||
+      item.questions?.chapter ||
       null;
 
     const chapterSubtitle =
-      q.chapters?.description ||
+      item.chapter_subtitle_snapshot ||
+      item.questions?.chapters?.description ||
+      item.questions?.chapter ||
       null;
 
     return {
       user_id: userId,
       book_project_id: projectId,
       participant_id: participantId,
-      question_id: q.id,
+      question_id: item.question_id,
       sequence_order: index + 1,
-      chapter: q.chapter || null,
+      chapter: chapterTitle,
       chapter_title_snapshot: chapterTitle,
       chapter_subtitle_snapshot: chapterSubtitle,
-      question_text_snapshot: q.content || "",
+      question_text_snapshot: questionText,
       status: "pending",
-      is_active: true
+      is_active: true,
+      meta_json: {
+        question_set_id: questionSet.id,
+        question_set_code: questionSet.code,
+        question_set_name: questionSet.name,
+        question_set_item_id: item.id,
+        original_sequence_order: item.sequence_order
+      }
     };
   });
 
