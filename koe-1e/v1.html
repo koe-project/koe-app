@@ -441,32 +441,38 @@ async function ensureUserQuestions(userId, foundationData = null) {
   }
 
   // 4. 質問セットに紐づく質問一覧を取得
-  const { data: setItems, error: itemError } = await supabaseClient
-    .from("question_set_items")
-    .select(`
+const { data: setItems, error: itemError } = await supabaseClient
+  .from("question_set_items")
+  .select(`
+    id,
+    question_set_id,
+    question_id,
+    sequence_order,
+    chapter_id,
+    chapter_title_snapshot,
+    chapter_subtitle_snapshot,
+    question_text_snapshot,
+    prompt_style,
+    prompt_hint_snapshot,
+    reassurance_text_snapshot,
+    followup_hint_snapshot,
+    min_duration_seconds,
+    min_transcript_chars,
+    is_required,
+    is_active,
+    questions (
       id,
-      question_set_id,
-      question_id,
-      sequence_order,
+      content,
+      chapter,
       chapter_id,
-      chapter_title_snapshot,
-      chapter_subtitle_snapshot,
-      question_text_snapshot,
-      is_required,
-      is_active,
-      questions (
+      chapters (
         id,
-        content,
-        chapter,
-        chapter_id,
-        chapters (
-          id,
-          label,
-          description,
-          display_order
-        )
+        label,
+        description,
+        display_order
       )
-    `)
+    )
+  `)
     .eq("question_set_id", questionSet.id)
     .eq("is_active", true)
     .order("sequence_order", { ascending: true });
@@ -500,26 +506,32 @@ async function ensureUserQuestions(userId, foundationData = null) {
       item.questions?.chapter ||
       null;
 
-    return {
-      user_id: userId,
-      book_project_id: projectId,
-      participant_id: participantId,
-      question_id: item.question_id,
-      sequence_order: index + 1,
-      chapter: chapterTitle,
-      chapter_title_snapshot: chapterTitle,
-      chapter_subtitle_snapshot: chapterSubtitle,
-      question_text_snapshot: questionText,
-      status: "pending",
-      is_active: true,
-      meta_json: {
-        question_set_id: questionSet.id,
-        question_set_code: questionSet.code,
-        question_set_name: questionSet.name,
-        question_set_item_id: item.id,
-        original_sequence_order: item.sequence_order
-      }
-    };
+return {
+  user_id: userId,
+  book_project_id: projectId,
+  participant_id: participantId,
+  question_id: item.question_id,
+  sequence_order: index + 1,
+  chapter: chapterTitle,
+  chapter_title_snapshot: chapterTitle,
+  chapter_subtitle_snapshot: chapterSubtitle,
+  question_text_snapshot: questionText,
+  status: "pending",
+  is_active: true,
+  meta_json: {
+    question_set_id: questionSet.id,
+    question_set_code: questionSet.code,
+    question_set_name: questionSet.name,
+    question_set_item_id: item.id,
+    original_sequence_order: item.sequence_order,
+    prompt_style: item.prompt_style || null,
+    prompt_hint: item.prompt_hint_snapshot || null,
+    reassurance_text: item.reassurance_text_snapshot || null,
+    followup_hint: item.followup_hint_snapshot || null,
+    min_duration_seconds: item.min_duration_seconds || 25,
+    min_transcript_chars: item.min_transcript_chars || 80
+  }
+};
   });
 
   const { error: insertError } = await supabaseClient
@@ -556,19 +568,26 @@ function normalizeUserQuestions(rows) {
       row.question_text_snapshot ||
       row.questions?.content ||
       "";
+const meta = row.meta_json || {};
 
-    return {
-      user_question_id: row.id,
-      book_project_id: row.book_project_id || null,
-      participant_id: row.participant_id || null,
-      id: row.questions?.id || row.question_id,
-      question_id: row.question_id,
-      sequence_order: row.sequence_order,
-      content,
-      chapter: chapterDescription || chapterTitle,
-      chapter_label: chapterTitle,
-      chapter_description: chapterDescription
-    };
+return {
+  user_question_id: row.id,
+  book_project_id: row.book_project_id || null,
+  participant_id: row.participant_id || null,
+  id: row.questions?.id || row.question_id,
+  question_id: row.question_id,
+  sequence_order: row.sequence_order,
+  content,
+  chapter: chapterDescription || chapterTitle,
+  chapter_label: chapterTitle,
+  chapter_description: chapterDescription,
+  prompt_style: meta.prompt_style || null,
+  prompt_hint: meta.prompt_hint || "",
+  reassurance_text: meta.reassurance_text || "",
+  followup_hint: meta.followup_hint || "",
+  min_duration_seconds: meta.min_duration_seconds || 25,
+  min_transcript_chars: meta.min_transcript_chars || 80
+};
   });
 }
 
@@ -578,33 +597,34 @@ async function loadUserQuestionSet(userId, foundationData = null) {
   const projectId = foundationData?.project?.id || null;
 
   let query = supabaseClient
-    .from("user_questions")
-    .select(`
+.from("user_questions")
+.select(`
+  id,
+  book_project_id,
+  participant_id,
+  sequence_order,
+  chapter,
+  chapter_title_snapshot,
+  chapter_subtitle_snapshot,
+  question_text_snapshot,
+  custom_question_text,
+  question_id,
+  is_active,
+  status,
+  meta_json,
+  questions (
+    id,
+    content,
+    chapter,
+    chapter_id,
+    chapters (
       id,
-      book_project_id,
-      participant_id,
-      sequence_order,
-      chapter,
-      chapter_title_snapshot,
-      chapter_subtitle_snapshot,
-      question_text_snapshot,
-      custom_question_text,
-      question_id,
-      is_active,
-      status,
-      questions (
-        id,
-        content,
-        chapter,
-        chapter_id,
-        chapters (
-          id,
-          label,
-          description,
-          display_order
-        )
-      )
-    `)
+      label,
+      description,
+      display_order
+    )
+  )
+`)
     .eq("is_active", true)
     .order("sequence_order", { ascending: true });
 
