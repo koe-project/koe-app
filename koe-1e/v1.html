@@ -1078,16 +1078,17 @@ function App() {
         />
       )}
 
-      {scene === 3.5 && (
-        <Scene3_5_VoiceCheck
-          data={voiceData}
-          onRetry={() => {
-            resetVoiceData();
-            setScene(3);
-          }}
-          onProceed={handleVoiceProceed}
-        />
-      )}
+{scene === 3.5 && (
+  <Scene3_5_VoiceCheck
+    data={voiceData}
+    question={currentQ}
+    onRetry={() => {
+      resetVoiceData();
+      setScene(3);
+    }}
+    onProceed={handleVoiceProceed}
+  />
+)}
 
       {scene === "processing" && (
         <Scene_Processing />
@@ -1596,10 +1597,27 @@ return (
   );
 }
 
-function Scene3_5_VoiceCheck({ data, onRetry, onProceed }) {
+function Scene3_5_VoiceCheck({ data, question, onRetry, onProceed }) {
+  const transcriptLength = String(data.transcript || "").trim().length;
+
+  const minDuration = question?.min_duration_seconds || 25;
+  const minChars = question?.min_transcript_chars || 80;
+
+  const isShortAnswer =
+    (data.duration > 0 && data.duration < minDuration) ||
+    transcriptLength < minChars;
+
+  const isFactTimeline = question?.prompt_style === "fact_timeline";
+
+  const followupText =
+    question?.followup_hint ||
+    (isFactTimeline
+      ? "いつ頃、どこで、誰と、どんな流れだったかを少し足すと、人生の歩みがより分かりやすくなります。"
+      : "誰と一緒だったか、どんな場所だったか、その時どんな気持ちだったかを少し足すと、よりあたたかいページになります。");
+
   return (
     <div className="h-full flex flex-col items-center justify-center fade-enter px-6 text-center">
-      <div className="glass-card p-8 w-full max-w-[320px] mb-12">
+      <div className="glass-card p-8 w-full max-w-[320px] mb-8">
         <p className="text-white/40 text-xs mb-4">
           RECORDED AUDIO
         </p>
@@ -1612,6 +1630,24 @@ function Scene3_5_VoiceCheck({ data, onRetry, onProceed }) {
           </p>
         )}
       </div>
+
+      {isShortAnswer && (
+        <div className="glass-card p-5 w-full max-w-[320px] mb-8 text-left">
+          <p className="text-white/70 text-sm leading-loose mb-3">
+            ありがとうございます。
+          </p>
+
+          <p className="text-white/55 text-sm leading-loose whitespace-pre-wrap">
+            もしよければ、もう少しだけ話し足してみませんか？
+            <br />
+            {followupText}
+          </p>
+
+          <p className="text-white/35 text-xs leading-loose mt-4 text-center">
+            もちろん、このまま進んでも大丈夫です。
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 w-full max-w-[280px]">
         <button
