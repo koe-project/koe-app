@@ -1344,15 +1344,36 @@ function Scene1_MyPage({ progress, question, userName, onNext }) {
       </header>
 
       <div className="flex-1 flex flex-col justify-center">
-        <div className="glass-card p-6 text-center space-y-6">
-          <p className="text-white/50 text-xs tracking-widest">
-            今日の問い
-          </p>
+<div className="glass-card p-6 text-center space-y-6">
+  <p className="text-white/50 text-xs tracking-widest">
+    今日の問い
+  </p>
 
-          <p className="text-[1.1rem] text-narrative text-white/90 whitespace-pre-wrap">
-            {question.content}
+  <p className="text-[1.1rem] text-narrative text-white/90 whitespace-pre-wrap">
+    {question.content}
+  </p>
+
+  {(question.prompt_hint || question.reassurance_text) && (
+    <div className="pt-5 border-t border-white/10 text-left space-y-4">
+      {question.prompt_hint && (
+        <div>
+          <p className="text-white/35 text-[0.7rem] tracking-widest mb-2">
+            考えるヒント
+          </p>
+          <p className="text-white/55 text-sm leading-loose whitespace-pre-wrap">
+            {question.prompt_hint}
           </p>
         </div>
+      )}
+
+      {question.reassurance_text && (
+        <p className="text-white/35 text-xs leading-loose text-center whitespace-pre-wrap">
+          {question.reassurance_text}
+        </p>
+      )}
+    </div>
+  )}
+</div>
       </div>
 
       <div className="flex flex-col gap-4 mt-8 pb-8">
