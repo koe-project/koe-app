@@ -684,18 +684,19 @@ function App() {
   const [progress, setProgress] = useState({ currentIndex: 0, total: 0 });
   const [foundation, setFoundation] = useState(null);
 
-  const [voiceData, setVoiceData] = useState({
-    duration: 0,
-    transcript: "",
-    audioUrl: null,
-    hasAudio: false,
-    audioBlob: null,
-    editedText: "",
-    aiMirror: "",
-    extractedSnippet: "",
-    answerId: null,
-    storagePath: null
-  });
+const [voiceData, setVoiceData] = useState({
+  duration: 0,
+  transcript: "",
+  audioUrl: null,
+  hasAudio: false,
+  audioBlob: null,
+  editedText: "",
+  aiMirror: "",
+  extractedSnippet: "",
+  answerId: null,
+  storagePath: null,
+  appendMode: false
+});
 
   useEffect(() => {
     const initApp = async () => {
@@ -757,37 +758,52 @@ function App() {
   }, []);
 
   const resetVoiceData = () => {
-    setVoiceData({
-      duration: 0,
-      transcript: "",
-      audioUrl: null,
-      hasAudio: false,
-      audioBlob: null,
-      editedText: "",
-      aiMirror: "",
-      extractedSnippet: "",
-      answerId: null,
-      storagePath: null
-    });
+setVoiceData({
+  duration: 0,
+  transcript: "",
+  audioUrl: null,
+  hasAudio: false,
+  audioBlob: null,
+  editedText: "",
+  aiMirror: "",
+  extractedSnippet: "",
+  answerId: null,
+  storagePath: null,
+  appendMode: false
+});
   };
 
-  const handleRecordComplete = (txt, dur, url, blob) => {
-    console.log("recorded blob", {
-      type: blob?.type,
-      size: blob?.size,
-      duration: dur,
-      transcript: txt
-    });
+const handleRecordComplete = (txt, dur, url, blob) => {
+  console.log("recorded blob", {
+    type: blob?.type,
+    size: blob?.size,
+    duration: dur,
+    transcript: txt
+  });
 
-    setVoiceData(prev => ({
+  setVoiceData(prev => {
+    const previousTranscript = String(prev.transcript || "").trim();
+    const newTranscript = String(txt || "").trim();
+
+    const mergedTranscript = prev.appendMode
+      ? [previousTranscript, newTranscript].filter(Boolean).join("\n\n")
+      : newTranscript;
+
+    const mergedDuration = prev.appendMode
+      ? (prev.duration || 0) + (dur || 0)
+      : dur;
+
+    return {
       ...prev,
-      transcript: txt,
-      duration: dur,
-      audioUrl: url,
-      audioBlob: blob,
-      hasAudio: !!(blob && blob.size > 0)
-    }));
-  };
+      transcript: mergedTranscript,
+      duration: mergedDuration,
+      audioUrl: url || prev.audioUrl,
+      audioBlob: blob || prev.audioBlob,
+      hasAudio: !!(blob && blob.size > 0) || prev.hasAudio,
+      appendMode: false
+    };
+  });
+};
 
   const handleVoiceProceed = async () => {
     setScene("processing");
@@ -1082,6 +1098,13 @@ function App() {
   <Scene3_5_VoiceCheck
     data={voiceData}
     question={currentQ}
+    onAddMore={() => {
+      setVoiceData(prev => ({
+        ...prev,
+        appendMode: true
+      }));
+      setScene(3);
+    }}
     onRetry={() => {
       resetVoiceData();
       setScene(3);
@@ -1597,7 +1620,7 @@ return (
   );
 }
 
-function Scene3_5_VoiceCheck({ data, question, onRetry, onProceed }) {
+function Scene3_5_VoiceCheck({ data, question, onAddMore, onRetry, onProceed }) {
   const transcriptLength = String(data.transcript || "").trim().length;
 
   const minDuration = question?.min_duration_seconds || 25;
@@ -1629,6 +1652,12 @@ function Scene3_5_VoiceCheck({ data, question, onRetry, onProceed }) {
             音声プレビューを作成できませんでした
           </p>
         )}
+
+        {data.transcript && (
+          <p className="text-white/30 text-xs leading-loose mt-5 line-clamp-3">
+            {data.transcript}
+          </p>
+        )}
       </div>
 
       {isShortAnswer && (
@@ -1650,9 +1679,18 @@ function Scene3_5_VoiceCheck({ data, question, onRetry, onProceed }) {
       )}
 
       <div className="flex flex-col gap-4 w-full max-w-[280px]">
+        {isShortAnswer && (
+          <button
+            onClick={onAddMore}
+            className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white"
+          >
+            少し話し足す
+          </button>
+        )}
+
         <button
           onClick={onProceed}
-          className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white"
+          className="btn-quiet w-full py-4 rounded-full text-white"
         >
           この内容で進む
         </button>
