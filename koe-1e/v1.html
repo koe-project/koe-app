@@ -1217,7 +1217,7 @@ function Scene_Login({ onLogin }) {
         <p className="text-[1.1rem] text-white/90 text-narrative mb-4">
           この物語を開くために<br/>お名前とメールアドレスを教えてください。
         </p>
-        <p className="text-white/35 text-xs leading-loose">
+        <p className="text-white/45 text-xs leading-loose">
           同じメールアドレスでは、前回の続きが開きます。
         </p>
       </div>
@@ -1357,7 +1357,7 @@ function Scene1_MyPage({ progress, question, userName, onNext }) {
     <div className="pt-5 border-t border-white/10 text-left space-y-4">
       {question.prompt_hint && (
         <div>
-          <p className="text-white/35 text-[0.7rem] tracking-widest mb-2">
+          <p className="text-white/45 text-[0.7rem] tracking-widest mb-2">
             考えるヒント
           </p>
           <p className="text-white/55 text-sm leading-loose whitespace-pre-wrap">
@@ -1367,7 +1367,7 @@ function Scene1_MyPage({ progress, question, userName, onNext }) {
       )}
 
       {question.reassurance_text && (
-        <p className="text-white/35 text-xs leading-loose text-center whitespace-pre-wrap">
+        <p className="text-white/45 text-xs leading-loose text-center whitespace-pre-wrap">
           {question.reassurance_text}
         </p>
       )}
@@ -1841,7 +1841,7 @@ function Scene_NotificationSetup({ user, onComplete }) {
         問いが届く時間を選んでください
       </p>
 
-      <p className="text-white/35 text-sm mb-14">
+      <p className="text-white/45 text-sm mb-14">
         （あとで変更できます）
       </p>
 
