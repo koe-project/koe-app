@@ -110,7 +110,30 @@
       line-height: 1.9;
       color: rgba(255, 255, 255, 0.4);
     }
-  </style>
+  
+.time-input {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 1.05rem;
+  text-align: center;
+  color-scheme: dark;
+}
+
+.time-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+
+.time-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.75;
+}
+
+</style>
 </head>
 
 <body>
@@ -153,8 +176,8 @@ function isDevMode() {
   return params.get("dev") === "1";
 }
 
-const DEV_LOGIN_EMAIL = "bird9bird9bird9+koedev@gmail.com";
-const DEV_LOGIN_PASSWORD = "bird9bird9";
+const DEV_LOGIN_EMAIL = "dev-koe@example.com";
+const DEV_LOGIN_PASSWORD = "CHANGE_ME_DEV_PASSWORD";
 
 async function ensureProfileExists(sessionUser, registrationData = {}) {
   const userId = sessionUser.id;
