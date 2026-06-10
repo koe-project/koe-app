@@ -148,6 +148,14 @@ function getSequenceFromUrl() {
   return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
 
+function isDevMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("dev") === "1";
+}
+
+const DEV_LOGIN_EMAIL = "bird9bird9bird9@gmail.com";
+const DEV_LOGIN_PASSWORD = "bird9bird9";
+
 async function ensureProfileExists(sessionUser, registrationData = {}) {
   const userId = sessionUser.id;
   const email = sessionUser.email || registrationData.email || "";
@@ -1316,6 +1324,67 @@ function Scene_Login({ onLogin }) {
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const handleDevLogin = async () => {
+    if (!isDevMode()) return;
+
+    if (
+      DEV_LOGIN_EMAIL === "dev-koe@example.com" ||
+      DEV_LOGIN_PASSWORD === "CHANGE_ME_DEV_PASSWORD"
+    ) {
+      alert("開発用ログインのメールアドレスとパスワードを v1.html 内で設定してください。");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email: DEV_LOGIN_EMAIL,
+        password: DEV_LOGIN_PASSWORD
+      });
+
+      if (error) {
+        console.error("dev login error", error);
+        alert("開発用ログインに失敗しました。");
+        return;
+      }
+
+      const {
+        data: { session },
+        error: sessionError
+      } = await supabaseClient.auth.getSession();
+
+      if (sessionError || !session) {
+        console.error("dev session error", sessionError);
+        alert("ログイン情報の取得に失敗しました。");
+        return;
+      }
+
+      const profile = await ensureProfileExists(session.user, {
+        email: session.user.email,
+        familyName: "開発",
+        givenName: "太郎",
+        fullName: "開発 太郎",
+        preferredName: "太郎さん"
+      });
+
+      onLogin({
+        id: session.user.id,
+        ...profile,
+        name: profile?.display_name || profile?.name || "あなた",
+        family_name: profile?.family_name || "開発",
+        given_name: profile?.given_name || "太郎",
+        display_name: profile?.display_name || profile?.name || "開発 太郎",
+        preferred_name: profile?.preferred_name || "太郎さん"
+      });
+    } catch (e) {
+      console.error("dev login unexpected error", e);
+      alert("開発用ログインでエラーが発生しました。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSendPin = async () => {
     setLoading(true);
 
@@ -1452,6 +1521,16 @@ function Scene_Login({ onLogin }) {
           >
             {loading ? "送信中..." : "認証コードを送る"}
           </button>
+
+          {isDevMode() && (
+            <button
+              onClick={handleDevLogin}
+              disabled={loading}
+              className="w-full py-3 text-white/45 text-sm underline underline-offset-4"
+            >
+              開発用ログイン
+            </button>
+          )}
         </div>
       ) : (
         <div className="w-full max-w-[280px] space-y-8 mb-12 fade-enter">
@@ -1475,6 +1554,16 @@ function Scene_Login({ onLogin }) {
           >
             {loading ? "確認中..." : "物語をはじめる"}
           </button>
+
+          {isDevMode() && (
+            <button
+              onClick={handleDevLogin}
+              disabled={loading}
+              className="w-full py-3 text-white/45 text-sm underline underline-offset-4"
+            >
+              開発用ログイン
+            </button>
+          )}
         </div>
       )}
     </div>
