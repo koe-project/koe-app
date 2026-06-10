@@ -158,21 +158,86 @@ async function ensureProfileExists(sessionUser, registrationData = {}) {
     throw existingError;
   }
 
-  if (existingProfile) {
-    return existingProfile;
+if (existingProfile) {
+  const updatePayload = {
+    family_name: familyName || existingProfile.family_name,
+    given_name: givenName || existingProfile.given_name,
+    name: fullName || existingProfile.name,
+    display_name: fullName || existingProfile.display_name,
+    preferred_name: preferredName || existingProfile.preferred_name
+  };
+
+  if (registrationData.hasSpouse !== undefined) {
+    updatePayload.has_spouse = registrationData.hasSpouse;
   }
+
+  if (registrationData.hasChildren !== undefined) {
+    updatePayload.has_children = registrationData.hasChildren;
+  }
+
+  if (registrationData.hasGrandchildren !== undefined) {
+    updatePayload.has_grandchildren = registrationData.hasGrandchildren;
+  }
+
+  if (registrationData.canTalkAboutParents !== undefined) {
+    updatePayload.can_talk_about_parents = registrationData.canTalkAboutParents;
+  }
+
+  if (registrationData.canTalkAboutPets !== undefined) {
+    updatePayload.can_talk_about_pets = registrationData.canTalkAboutPets;
+  }
+
+  const { data: updatedProfile, error: updateError } = await supabaseClient
+    .from("profiles")
+    .update(updatePayload)
+    .eq("id", userId)
+    .select()
+    .single();
+
+  if (updateError) {
+    console.error("profile update error", updateError);
+    throw updateError;
+  }
+
+  return updatedProfile;
+}
 
   const { data: newProfile, error: profileError } = await supabaseClient
     .from("profiles")
-    .insert({
-      id: userId,
-      email,
-      name: fullName,
-      family_name: familyName,
-      given_name: givenName,
-      display_name: fullName,
-      preferred_name: preferredName
-    })
+.insert({
+  id: userId,
+  email,
+  name: fullName,
+  family_name: familyName,
+  given_name: givenName,
+  display_name: fullName,
+  preferred_name: preferredName,
+
+  has_spouse:
+    registrationData.hasSpouse === undefined
+      ? true
+      : registrationData.hasSpouse,
+
+  has_children:
+    registrationData.hasChildren === undefined
+      ? true
+      : registrationData.hasChildren,
+
+  has_grandchildren:
+    registrationData.hasGrandchildren === undefined
+      ? true
+      : registrationData.hasGrandchildren,
+
+  can_talk_about_parents:
+    registrationData.canTalkAboutParents === undefined
+      ? true
+      : registrationData.canTalkAboutParents,
+
+  can_talk_about_pets:
+    registrationData.canTalkAboutPets === undefined
+      ? true
+      : registrationData.canTalkAboutPets
+})
     .select()
     .single();
 
@@ -1168,11 +1233,46 @@ meta_json: {
     </div>
   );
 }
+function StoryThemeToggle({ label, value, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+        value
+          ? "bg-white/10 border-white/15 text-white"
+          : "bg-black/25 border-white/5 text-white/25 opacity-60"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 ${
+            value
+              ? "bg-white/20 text-white"
+              : "bg-white/5 text-white/25"
+          }`}
+        >
+          {value ? "✓" : ""}
+        </div>
 
+        <p className="text-sm leading-loose">
+          {label}
+        </p>
+      </div>
+    </button>
+  );
+}
 function Scene_Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [familyName, setFamilyName] = useState("");
   const [givenName, setGivenName] = useState("");
+
+  const [hasSpouse, setHasSpouse] = useState(true);
+  const [hasChildren, setHasChildren] = useState(true);
+  const [hasGrandchildren, setHasGrandchildren] = useState(true);
+  const [canTalkAboutParents, setCanTalkAboutParents] = useState(true);
+  const [canTalkAboutPets, setCanTalkAboutPets] = useState(true);
+
   const [step, setStep] = useState(1);
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1230,13 +1330,19 @@ function Scene_Login({ onLogin }) {
     let profile;
 
     try {
-      profile = await ensureProfileExists(session.user, {
-        email,
-        familyName,
-        givenName,
-        fullName,
-        preferredName
-      });
+profile = await ensureProfileExists(session.user, {
+  email,
+  familyName,
+  givenName,
+  fullName,
+  preferredName,
+
+  hasSpouse,
+  hasChildren,
+  hasGrandchildren,
+  canTalkAboutParents,
+  canTalkAboutPets
+});
     } catch (e) {
       setLoading(false);
       console.error(e);
@@ -1271,7 +1377,7 @@ function Scene_Login({ onLogin }) {
       </div>
 
       {step === 1 ? (
-        <div className="w-full max-w-[280px] space-y-8 mb-12">
+       <div className="w-full max-w-[340px] space-y-8 mb-12">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-white/40 text-xs mb-2">姓</p>
@@ -1296,18 +1402,57 @@ function Scene_Login({ onLogin }) {
             </div>
           </div>
 
-          <div>
-            <p className="text-white/40 text-xs mb-2">メールアドレス</p>
-            <input
-              type="email"
-              className="quiet-input"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-            />
-          </div>
+<div className="space-y-5 pt-2">
+  <div className="text-center space-y-3">
+    <p className="text-white/70 text-sm tracking-widest">
+      今回の本で、触れてもよいこと
+    </p>
 
-          <button
-            onClick={handleSendPin}
+    <p className="text-white/40 text-xs leading-loose">
+      これからの問いを、あなたに合う形に整えていきます。
+      <br />
+      あてはまらないものや、触れたくないテーマがあれば、
+      <br />
+      タップして外してください。
+    </p>
+
+    <p className="text-white/30 text-xs leading-loose">
+      あとから変更することもできます。
+    </p>
+  </div>
+
+  <div className="space-y-3">
+    <StoryThemeToggle
+      label="配偶者・パートナーのこと"
+      value={hasSpouse}
+      onToggle={() => setHasSpouse(prev => !prev)}
+    />
+
+    <StoryThemeToggle
+      label="子どものこと"
+      value={hasChildren}
+      onToggle={() => setHasChildren(prev => !prev)}
+    />
+
+    <StoryThemeToggle
+      label="孫のこと"
+      value={hasGrandchildren}
+      onToggle={() => setHasGrandchildren(prev => !prev)}
+    />
+
+    <StoryThemeToggle
+      label="親や、育ててくれた人のこと"
+      value={canTalkAboutParents}
+      onToggle={() => setCanTalkAboutParents(prev => !prev)}
+    />
+
+    <StoryThemeToggle
+      label="ペット・一緒に暮らした生きもののこと"
+      value={canTalkAboutPets}
+      onToggle={() => setCanTalkAboutPets(prev => !prev)}
+    />
+  </div>
+</div>
             disabled={!email || !familyName || !givenName || loading}
             className="btn-quiet w-full py-4 rounded-full text-sm"
           >
