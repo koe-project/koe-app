@@ -821,7 +821,7 @@ function App() {
         });
 
         if (!notificationData) {
-          setScene("notification_setup");
+          setScene("setup_intro");
         } else {
           setScene(0);
         }
@@ -1121,7 +1121,7 @@ function App() {
               });
 
               if (!notificationData) {
-                setScene("notification_setup");
+                setScene("setup_intro");
               } else {
                 setScene(0);
               }
@@ -1129,6 +1129,37 @@ function App() {
               setIsInitializing(false);
             }
           }}
+        />
+      )}
+
+      {scene === "setup_intro" && (
+        <Scene_SetupIntro
+          onNext={() => setScene("story_theme_setup")}
+        />
+      )}
+
+      {scene === "story_theme_setup" && (
+        <Scene_StoryThemeSetup
+          user={user}
+          onComplete={(updatedProfile) => {
+            if (updatedProfile) {
+              setUser(prev => ({
+                ...prev,
+                ...updatedProfile,
+                name: updatedProfile?.display_name || updatedProfile?.name || prev?.name || "あなた"
+              }));
+            }
+
+            setScene("supporter_invite");
+          }}
+        />
+      )}
+
+      {scene === "supporter_invite" && (
+        <Scene_SupporterInvite
+          user={user}
+          foundation={foundation}
+          onComplete={() => setScene("notification_setup")}
         />
       )}
 
@@ -1281,12 +1312,6 @@ function Scene_Login({ onLogin }) {
   const [familyName, setFamilyName] = useState("");
   const [givenName, setGivenName] = useState("");
 
-  const [hasSpouse, setHasSpouse] = useState(true);
-  const [hasChildren, setHasChildren] = useState(true);
-  const [hasGrandchildren, setHasGrandchildren] = useState(true);
-  const [canTalkAboutParents, setCanTalkAboutParents] = useState(true);
-  const [canTalkAboutPets, setCanTalkAboutPets] = useState(true);
-
   const [step, setStep] = useState(1);
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1349,13 +1374,7 @@ function Scene_Login({ onLogin }) {
         familyName,
         givenName,
         fullName,
-        preferredName,
-
-        hasSpouse,
-        hasChildren,
-        hasGrandchildren,
-        canTalkAboutParents,
-        canTalkAboutPets
+        preferredName
       });
     } catch (e) {
       setLoading(false);
@@ -1381,7 +1400,7 @@ function Scene_Login({ onLogin }) {
 
   return (
     <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center overflow-y-auto">
-      <div className="mb-10 pt-8">
+      <div className="mb-12 pt-8">
         <p className="text-[1.1rem] text-white/90 text-narrative mb-4">
           この物語を開くために<br />お名前とメールアドレスを教えてください。
         </p>
@@ -1391,7 +1410,7 @@ function Scene_Login({ onLogin }) {
       </div>
 
       {step === 1 ? (
-        <div className="w-full max-w-[340px] space-y-8 mb-12">
+        <div className="w-full max-w-[320px] space-y-8 mb-12">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="ui-label mb-2">姓</p>
@@ -1424,52 +1443,6 @@ function Scene_Login({ onLogin }) {
               value={email}
               onChange={e => setEmail(e.target.value)}
             />
-          </div>
-
-          <div className="space-y-5 pt-2">
-            <div className="text-center space-y-4">
-              <p className="text-white/75 text-base tracking-widest">
-                今回の語りで
-              </p>
-
-              <p className="ui-help">
-                今は話さなくてよいことや、<br />
-                あてはまらないテーマがあれば<br />
-                外してください。
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <StoryThemeToggle
-                label="配偶者・パートナーのこと"
-                value={hasSpouse}
-                onToggle={() => setHasSpouse(prev => !prev)}
-              />
-
-              <StoryThemeToggle
-                label="子どものこと"
-                value={hasChildren}
-                onToggle={() => setHasChildren(prev => !prev)}
-              />
-
-              <StoryThemeToggle
-                label="孫のこと"
-                value={hasGrandchildren}
-                onToggle={() => setHasGrandchildren(prev => !prev)}
-              />
-
-              <StoryThemeToggle
-                label="親や、育ててくれた人のこと"
-                value={canTalkAboutParents}
-                onToggle={() => setCanTalkAboutParents(prev => !prev)}
-              />
-
-              <StoryThemeToggle
-                label="ペット・一緒に暮らした生きもののこと"
-                value={canTalkAboutPets}
-                onToggle={() => setCanTalkAboutPets(prev => !prev)}
-              />
-            </div>
           </div>
 
           <button
@@ -1507,6 +1480,213 @@ function Scene_Login({ onLogin }) {
     </div>
   );
 }
+
+function Scene_SetupIntro({ onNext }) {
+  return (
+    <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center">
+      <div className="space-y-7 mb-14 text-narrative">
+        <p className="text-[1.1rem] text-white/90">
+          物語を始める前に
+        </p>
+
+        <p className="text-white/65 text-[0.98rem] leading-loose">
+          これから、語りやすくするための設定を<br />
+          少しだけ整えます。
+        </p>
+
+        <p className="text-white/55 text-[0.95rem] leading-loose">
+          ここで選ぶ内容は、<br />
+          あとからいつでも変更できます。
+        </p>
+      </div>
+
+      <button
+        onClick={onNext}
+        className="btn-quiet bg-white/10 w-full max-w-[280px] py-4 rounded-full text-sm text-white"
+      >
+        はじめる
+      </button>
+    </div>
+  );
+}
+
+function Scene_StoryThemeSetup({ user, onComplete }) {
+  const [hasSpouse, setHasSpouse] = useState(user?.has_spouse ?? true);
+  const [hasChildren, setHasChildren] = useState(user?.has_children ?? true);
+  const [hasGrandchildren, setHasGrandchildren] = useState(user?.has_grandchildren ?? true);
+  const [canTalkAboutParents, setCanTalkAboutParents] = useState(user?.can_talk_about_parents ?? true);
+  const [canTalkAboutPets, setCanTalkAboutPets] = useState(user?.can_talk_about_pets ?? true);
+  const [loading, setLoading] = useState(false);
+
+  const saveThemes = async () => {
+    try {
+      setLoading(true);
+
+      const { data: updatedProfile, error } = await supabaseClient
+        .from("profiles")
+        .update({
+          has_spouse: hasSpouse,
+          has_children: hasChildren,
+          has_grandchildren: hasGrandchildren,
+          can_talk_about_parents: canTalkAboutParents,
+          can_talk_about_pets: canTalkAboutPets
+        })
+        .eq("id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      onComplete(updatedProfile);
+    } catch (e) {
+      console.error("theme setup save error", e);
+      alert("設定の保存に失敗しました。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center overflow-y-auto">
+      <div className="w-full max-w-[340px] space-y-8 py-10">
+        <div className="text-center space-y-4">
+          <p className="text-white/75 text-base tracking-widest">
+            今回の語りで
+          </p>
+
+          <p className="ui-help">
+            今は話さなくてよいことや、<br />
+            あてはまらないテーマがあれば<br />
+            外してください。
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <StoryThemeToggle
+            label="配偶者・パートナーのこと"
+            value={hasSpouse}
+            onToggle={() => setHasSpouse(prev => !prev)}
+          />
+
+          <StoryThemeToggle
+            label="子どものこと"
+            value={hasChildren}
+            onToggle={() => setHasChildren(prev => !prev)}
+          />
+
+          <StoryThemeToggle
+            label="孫のこと"
+            value={hasGrandchildren}
+            onToggle={() => setHasGrandchildren(prev => !prev)}
+          />
+
+          <StoryThemeToggle
+            label="親や、育ててくれた人のこと"
+            value={canTalkAboutParents}
+            onToggle={() => setCanTalkAboutParents(prev => !prev)}
+          />
+
+          <StoryThemeToggle
+            label="ペット・一緒に暮らした生きもののこと"
+            value={canTalkAboutPets}
+            onToggle={() => setCanTalkAboutPets(prev => !prev)}
+          />
+        </div>
+
+        <button
+          onClick={saveThemes}
+          disabled={loading}
+          className="btn-quiet bg-white/10 w-full py-4 rounded-full text-sm text-white"
+        >
+          {loading ? "保存中..." : "この内容で進む"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Scene_SupporterInvite({ user, foundation, onComplete }) {
+  const [supporterEmail, setSupporterEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const saveInvite = async () => {
+    const inviteeEmail = supporterEmail.trim();
+
+    if (!inviteeEmail) {
+      onComplete();
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { error } = await supabaseClient
+        .from("project_invites")
+        .insert({
+          book_project_id: foundation?.project?.id || null,
+          inviter_user_id: user.id,
+          invitee_email: inviteeEmail,
+          role: "supporter",
+          status: "pending"
+        });
+
+      if (error) throw error;
+
+      onComplete();
+    } catch (e) {
+      console.error("supporter invite save error", e);
+      alert("サポーター招待の保存に失敗しました。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="h-full flex flex-col items-center justify-center fade-enter px-4 text-center">
+      <div className="w-full max-w-[320px] space-y-9">
+        <div className="space-y-5 text-narrative">
+          <p className="text-[1.1rem] text-white/90">
+            本づくりを手伝う人
+          </p>
+
+          <p className="text-white/60 text-[0.98rem] leading-loose">
+            写真の追加や、完成前の確認を<br />
+            家族に手伝ってもらうことができます。
+          </p>
+        </div>
+
+        <div>
+          <p className="ui-label mb-2">サポーターのメールアドレス</p>
+          <input
+            type="email"
+            className="quiet-input"
+            value={supporterEmail}
+            onChange={e => setSupporterEmail(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-4">
+          <button
+            onClick={saveInvite}
+            disabled={loading}
+            className="btn-quiet bg-white/10 w-full py-4 rounded-full text-sm text-white"
+          >
+            {loading ? "保存中..." : "サポーターを招待する"}
+          </button>
+
+          <button
+            onClick={onComplete}
+            disabled={loading}
+            className="w-full py-3 text-white/45 text-sm underline underline-offset-4"
+          >
+            今はひとりで始める
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function Scene0_Door({ onNext }) {
   return (
@@ -2106,7 +2286,7 @@ function Scene_NotificationSetup({ user, onComplete }) {
       </p>
 
       <p className="ui-small mb-14">
-        （あとで変更できます）
+        ご自身のペースに合わせて選んでください。
       </p>
 
       {!customMode ? (
