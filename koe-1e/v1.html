@@ -1375,91 +1375,101 @@ profile = await ensureProfileExists(session.user, {
           同じメールアドレスでは、前回の続きが開きます。
         </p>
       </div>
+<div className="w-full max-w-[340px] space-y-8 mb-12">
+  <div className="grid grid-cols-2 gap-4">
+    <div>
+      <p className="text-white/40 text-xs mb-2">姓</p>
+      <input
+        type="text"
+        className="quiet-input"
+        value={familyName}
+        onChange={e => setFamilyName(e.target.value)}
+        placeholder=""
+      />
+    </div>
 
-      {step === 1 ? (
-       <div className="w-full max-w-[340px] space-y-8 mb-12">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-white/40 text-xs mb-2">姓</p>
-              <input
-                type="text"
-                className="quiet-input"
-                value={familyName}
-                onChange={e => setFamilyName(e.target.value)}
-                placeholder=""
-              />
-            </div>
-
-            <div>
-              <p className="text-white/40 text-xs mb-2">名</p>
-              <input
-                type="text"
-                className="quiet-input"
-                value={givenName}
-                onChange={e => setGivenName(e.target.value)}
-                placeholder=""
-              />
-            </div>
-          </div>
-
-<div className="space-y-5 pt-2">
-  <div className="text-center space-y-3">
-    <p className="text-white/70 text-sm tracking-widest">
-      今回の本で、触れてもよいこと
-    </p>
-
-    <p className="text-white/40 text-xs leading-loose">
-      これからの問いを、あなたに合う形に整えていきます。
-      <br />
-      あてはまらないものや、触れたくないテーマがあれば、
-      <br />
-      タップして外してください。
-    </p>
-
-    <p className="text-white/30 text-xs leading-loose">
-      あとから変更することもできます。
-    </p>
+    <div>
+      <p className="text-white/40 text-xs mb-2">名</p>
+      <input
+        type="text"
+        className="quiet-input"
+        value={givenName}
+        onChange={e => setGivenName(e.target.value)}
+        placeholder=""
+      />
+    </div>
   </div>
 
-  <div className="space-y-3">
-    <StoryThemeToggle
-      label="配偶者・パートナーのこと"
-      value={hasSpouse}
-      onToggle={() => setHasSpouse(prev => !prev)}
-    />
-
-    <StoryThemeToggle
-      label="子どものこと"
-      value={hasChildren}
-      onToggle={() => setHasChildren(prev => !prev)}
-    />
-
-    <StoryThemeToggle
-      label="孫のこと"
-      value={hasGrandchildren}
-      onToggle={() => setHasGrandchildren(prev => !prev)}
-    />
-
-    <StoryThemeToggle
-      label="親や、育ててくれた人のこと"
-      value={canTalkAboutParents}
-      onToggle={() => setCanTalkAboutParents(prev => !prev)}
-    />
-
-    <StoryThemeToggle
-      label="ペット・一緒に暮らした生きもののこと"
-      value={canTalkAboutPets}
-      onToggle={() => setCanTalkAboutPets(prev => !prev)}
+  <div>
+    <p className="text-white/40 text-xs mb-2">メールアドレス</p>
+    <input
+      type="email"
+      className="quiet-input"
+      value={email}
+      onChange={e => setEmail(e.target.value)}
     />
   </div>
+
+  <div className="space-y-5 pt-2">
+    <div className="text-center space-y-3">
+      <p className="text-white/70 text-sm tracking-widest">
+        今回の本で、触れてもよいこと
+      </p>
+
+      <p className="text-white/40 text-xs leading-loose">
+        これからの問いを、あなたに合う形に整えていきます。
+        <br />
+        あてはまらないものや、触れたくないテーマがあれば、
+        <br />
+        タップして外してください。
+      </p>
+
+      <p className="text-white/30 text-xs leading-loose">
+        あとから変更することもできます。
+      </p>
+    </div>
+
+    <div className="space-y-3">
+      <StoryThemeToggle
+        label="配偶者・パートナーのこと"
+        value={hasSpouse}
+        onToggle={() => setHasSpouse(prev => !prev)}
+      />
+
+      <StoryThemeToggle
+        label="子どものこと"
+        value={hasChildren}
+        onToggle={() => setHasChildren(prev => !prev)}
+      />
+
+      <StoryThemeToggle
+        label="孫のこと"
+        value={hasGrandchildren}
+        onToggle={() => setHasGrandchildren(prev => !prev)}
+      />
+
+      <StoryThemeToggle
+        label="親や、育ててくれた人のこと"
+        value={canTalkAboutParents}
+        onToggle={() => setCanTalkAboutParents(prev => !prev)}
+      />
+
+      <StoryThemeToggle
+        label="ペット・一緒に暮らした生きもののこと"
+        value={canTalkAboutPets}
+        onToggle={() => setCanTalkAboutPets(prev => !prev)}
+      />
+    </div>
+  </div>
+
+  <button
+    onClick={handleSendPin}
+    disabled={!email || !familyName || !givenName || loading}
+    className="btn-quiet w-full py-4 rounded-full text-sm"
+  >
+    {loading ? "送信中..." : "認証コードを送る"}
+  </button>
 </div>
-            disabled={!email || !familyName || !givenName || loading}
-            className="btn-quiet w-full py-4 rounded-full text-sm"
-          >
-            {loading ? "送信中..." : "認証コードを送る"}
-          </button>
-        </div>
-      ) : (
         <div className="w-full max-w-[280px] space-y-8 mb-12 fade-enter">
           <p className="text-white/60 text-xs">
             メールに届いた6桁のコードを入力してください
