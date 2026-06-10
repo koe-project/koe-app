@@ -695,7 +695,8 @@ const [voiceData, setVoiceData] = useState({
   extractedSnippet: "",
   answerId: null,
   storagePath: null,
-  appendMode: false
+  appendMode: false,
+  addMoreCount: 0
 });
 
   useEffect(() => {
@@ -769,7 +770,8 @@ setVoiceData({
   extractedSnippet: "",
   answerId: null,
   storagePath: null,
-  appendMode: false
+  appendMode: false,
+  addMoreCount: 0
 });
   };
 
@@ -912,11 +914,31 @@ const handleRecordComplete = (txt, dur, url, blob) => {
           transcript_edited: voiceData.editedText,
           ai_mirror: voiceData.aiMirror,
           snippet: voiceData.extractedSnippet,
-          meta_json: {
-            meaning_tag: tag,
-            duration_seconds: voiceData.duration,
-            user_question_id: currentQ?.user_question_id || null
-          }
+meta_json: {
+  meaning_tag: tag,
+
+  duration_seconds: voiceData.duration,
+  transcript_chars: String(voiceData.transcript || "").trim().length,
+
+  user_question_id: currentQ?.user_question_id || null,
+
+  prompt_style: currentQ?.prompt_style || null,
+  prompt_hint: currentQ?.prompt_hint || null,
+  reassurance_text: currentQ?.reassurance_text || null,
+  followup_hint: currentQ?.followup_hint || null,
+
+  min_duration_seconds: currentQ?.min_duration_seconds || 25,
+  min_transcript_chars: currentQ?.min_transcript_chars || 80,
+
+  was_short_answer:
+    (
+      voiceData.duration > 0 &&
+      voiceData.duration < (currentQ?.min_duration_seconds || 25)
+    ) ||
+    String(voiceData.transcript || "").trim().length < (currentQ?.min_transcript_chars || 80),
+
+  add_more_count: voiceData.addMoreCount || 0
+}
         }, { onConflict: "user_id,sequence_order" })
         .select("id")
         .single();
@@ -1094,6 +1116,7 @@ const handleRecordComplete = (txt, dur, url, blob) => {
         />
       )}
 
+
 {scene === 3.5 && (
   <Scene3_5_VoiceCheck
     data={voiceData}
@@ -1101,7 +1124,8 @@ const handleRecordComplete = (txt, dur, url, blob) => {
     onAddMore={() => {
       setVoiceData(prev => ({
         ...prev,
-        appendMode: true
+        appendMode: true,
+        addMoreCount: (prev.addMoreCount || 0) + 1
       }));
       setScene(3);
     }}
