@@ -176,6 +176,73 @@ function isDevMode() {
   return params.get("dev") === "1";
 }
 
+
+function formatTranscriptForReading(input) {
+  let text = String(input || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text) return "";
+
+  const fillerPattern = /(えーと|えっと|あのー|あの|そのー|その|まあ|まぁ|なんか|えー|ええと|うーん|うんと)/g;
+  text = text.replace(fillerPattern, "$1、");
+
+  const commaWords = [
+    "それは",
+    "それで",
+    "そして",
+    "でも",
+    "ただ",
+    "たしか",
+    "確か",
+    "たぶん",
+    "多分",
+    "だから",
+    "その時",
+    "そのとき",
+    "そこでは",
+    "あとは",
+    "ちなみに",
+    "思うけど",
+    "思いますけど",
+    "だったけど",
+    "でしたけど"
+  ];
+
+  commaWords.forEach(word => {
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(escaped, "g"), `${word}、`);
+  });
+
+  text = text
+    .replace(/、+/g, "、")
+    .replace(/、([。！？])/g, "$1")
+    .replace(/かなあ/g, "かなあ。")
+    .replace(/かなぁ/g, "かなぁ。")
+    .replace(/かな/g, "かな。")
+    .replace(/だった/g, "だった。")
+    .replace(/でした/g, "でした。")
+    .replace(/と思います/g, "と思います。")
+    .replace(/と思う/g, "と思う。")
+    .replace(/です/g, "です。")
+    .replace(/ます/g, "ます。")
+    .replace(/ました/g, "ました。");
+
+  text = text
+    .replace(/。+/g, "。")
+    .replace(/、。/g, "。")
+    .replace(/。([ぁ-んァ-ン一-龥A-Za-z0-9])/g, "。\n\n$1")
+    .replace(/、\s*/g, "、")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!/[。！？]$/.test(text)) {
+    text += "。";
+  }
+
+  return text;
+}
+
 const DEV_LOGIN_EMAIL = "bird9bird9bird9+koedev@gmail.com";
 const DEV_LOGIN_PASSWORD = "bird9bird9";
 
@@ -799,11 +866,14 @@ function App() {
     audioUrl: null,
     hasAudio: false,
     audioBlob: null,
+    audioSegments: [],
+    photoItems: [],
     editedText: "",
     aiMirror: "",
     extractedSnippet: "",
     answerId: null,
     storagePath: null,
+    storagePaths: [],
     appendMode: false,
     addMoreCount: 0
   });
@@ -897,21 +967,79 @@ function App() {
       const newTranscript = String(txt || "").trim();
 
       const mergedTranscript = prev.appendMode
-        ? [previousTranscript, newTranscript].filter(Boolean).join("\n\n")
+        ? formatTranscriptForReading([previousTranscript, newTranscript].filter(Boolean).join("\n\n"))
         : newTranscript;
 
       const mergedDuration = prev.appendMode
         ? (prev.duration || 0) + (dur || 0)
         : dur;
 
+      const newSegment = blob && blob.size > 0
+        ? {
+            url,
+            blob,
+            duration: dur || 0,
+            transcript: newTranscript,
+            createdAt: Date.now()
+          }
+        : null;
+
+      const mergedSegments = prev.appendMode
+        ? [
+            ...(prev.audioSegments || []),
+            ...(newSegment ? [newSegment] : [])
+          ]
+        : (newSegment ? [newSegment] : []);
+
       return {
         ...prev,
         transcript: mergedTranscript,
         duration: mergedDuration,
-        audioUrl: url || prev.audioUrl,
-        audioBlob: blob || prev.audioBlob,
-        hasAudio: !!(blob && blob.size > 0) || prev.hasAudio,
+        audioUrl: newSegment?.url || prev.audioUrl,
+        audioBlob: newSegment?.blob || prev.audioBlob,
+        audioSegments: mergedSegments,
+        hasAudio: mergedSegments.length > 0 || prev.hasAudio,
         appendMode: false
+      };
+    });
+  };
+
+  const handlePhotoSelect = (files) => {
+    const selectedFiles = Array.from(files || [])
+      .filter(file => file && file.type && file.type.startsWith("image/"));
+
+    if (selectedFiles.length === 0) return;
+
+    setVoiceData(prev => {
+      const existing = prev.photoItems || [];
+
+      const additions = selectedFiles.map(file => ({
+        file,
+        url: URL.createObjectURL(file),
+        name: file.name || "photo",
+        type: file.type || "image/jpeg",
+        createdAt: Date.now() + Math.random()
+      }));
+
+      return {
+        ...prev,
+        photoItems: [...existing, ...additions]
+      };
+    });
+  };
+
+  const handleRemovePhoto = (createdAt) => {
+    setVoiceData(prev => {
+      const remaining = (prev.photoItems || []).filter(photo => photo.createdAt !== createdAt);
+      const removed = (prev.photoItems || []).find(photo => photo.createdAt === createdAt);
+
+      if (removed?.url) {
+        try { URL.revokeObjectURL(removed.url); } catch (e) {}
+      }
+
+      return {
+        ...prev,
+        photoItems: remaining
       };
     });
   };
@@ -936,21 +1064,41 @@ function App() {
 
       if (existingAnswer) targetAnswerId = existingAnswer.id;
 
-      let path = null;
+      let paths = [];
 
-      if (voiceData.hasAudio && voiceData.audioBlob) {
-        const contentType = voiceData.audioBlob.type || "audio/mp4";
+      const audioSegments = (voiceData.audioSegments && voiceData.audioSegments.length > 0)
+        ? voiceData.audioSegments
+        : (
+            voiceData.hasAudio && voiceData.audioBlob
+              ? [{
+                  blob: voiceData.audioBlob,
+                  url: voiceData.audioUrl,
+                  duration: voiceData.duration || 0,
+                  transcript: voiceData.transcript || "",
+                  createdAt: Date.now()
+                }]
+              : []
+          );
+
+      for (let i = 0; i < audioSegments.length; i++) {
+        const segment = audioSegments[i];
+        const blob = segment?.blob;
+
+        if (!blob || !blob.size) continue;
+
+        const contentType = blob.type || "audio/mp4";
         const ext = contentType.includes("mp4")
           ? "mp4"
           : contentType.includes("aac")
             ? "aac"
             : "webm";
 
-        path = `${user.id}/${targetAnswerId}.${ext}`;
+        const segmentNo = String(i + 1).padStart(2, "0");
+        const path = `${user.id}/${targetAnswerId}/part-${segmentNo}.${ext}`;
 
         const { error: uploadError } = await supabaseClient.storage
           .from("audio")
-          .upload(path, voiceData.audioBlob, {
+          .upload(path, blob, {
             contentType,
             upsert: true
           });
@@ -959,12 +1107,15 @@ function App() {
           console.error("storage upload error", uploadError);
           throw new Error("音声の退避に失敗しました");
         }
+
+        paths.push(path);
       }
 
       setVoiceData(prev => ({
         ...prev,
         answerId: targetAnswerId,
-        storagePath: path
+        storagePath: paths[paths.length - 1] || null,
+        storagePaths: paths
       }));
 
       let aiResult;
@@ -1046,7 +1197,9 @@ function App() {
               ) ||
               String(voiceData.transcript || "").trim().length < (currentQ?.min_transcript_chars || 80),
 
-            add_more_count: voiceData.addMoreCount || 0
+            add_more_count: voiceData.addMoreCount || 0,
+            audio_segment_count: (voiceData.audioSegments || []).length,
+            audio_segment_durations: (voiceData.audioSegments || []).map(s => s.duration || 0)
           }
         }, { onConflict: "user_id,sequence_order" })
         .select("id")
@@ -1059,21 +1212,94 @@ function App() {
 
       const finalAnswerId = savedAnswer?.id || ansId;
 
-      if (voiceData.storagePath) {
+      const storagePaths = voiceData.storagePaths && voiceData.storagePaths.length > 0
+        ? voiceData.storagePaths
+        : (voiceData.storagePath ? [voiceData.storagePath] : []);
+
+      if (storagePaths.length > 0) {
+        const mediaRows = storagePaths.map((storagePath, index) => ({
+          answer_id: finalAnswerId,
+          user_id: user.id,
+          family_id: foundation?.family?.id || null,
+          book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
+          person_id: foundation?.person?.id || null,
+          asset_type: "audio",
+          storage_path: storagePath,
+          meta_json: {
+            part: index + 1,
+            total_parts: storagePaths.length,
+            duration_seconds: voiceData.audioSegments?.[index]?.duration || null,
+            transcript: voiceData.audioSegments?.[index]?.transcript || null
+          }
+        }));
+
         const { error: assetError } = await supabaseClient
           .from("media_assets")
-          .upsert({
+          .upsert(mediaRows, { onConflict: "answer_id, asset_type, storage_path" });
+
+        if (assetError) {
+          console.error("media asset save error", assetError);
+        }
+      }
+
+      const photoItems = voiceData.photoItems || [];
+
+      if (photoItems.length > 0) {
+        const photoRows = [];
+
+        for (let i = 0; i < photoItems.length; i++) {
+          const photo = photoItems[i];
+          const file = photo?.file;
+
+          if (!file) continue;
+
+          const contentType = file.type || "image/jpeg";
+          const ext = contentType.includes("png")
+            ? "png"
+            : contentType.includes("webp")
+              ? "webp"
+              : "jpg";
+
+          const photoNo = String(i + 1).padStart(2, "0");
+          const photoPath = `${user.id}/${finalAnswerId}/photo-${photoNo}.${ext}`;
+
+          const { error: photoUploadError } = await supabaseClient.storage
+            .from("photos")
+            .upload(photoPath, file, {
+              contentType,
+              upsert: true
+            });
+
+          if (photoUploadError) {
+            console.error("photo upload error", photoUploadError);
+            throw new Error("写真の保存に失敗しました");
+          }
+
+          photoRows.push({
             answer_id: finalAnswerId,
             user_id: user.id,
             family_id: foundation?.family?.id || null,
             book_project_id: foundation?.project?.id || currentQ?.book_project_id || null,
             person_id: foundation?.person?.id || null,
-            asset_type: "audio",
-            storage_path: voiceData.storagePath
-          }, { onConflict: "answer_id, asset_type, storage_path" });
+            asset_type: "photo",
+            storage_path: photoPath,
+            meta_json: {
+              part: i + 1,
+              total_parts: photoItems.length,
+              file_name: photo.name || null,
+              content_type: contentType
+            }
+          });
+        }
 
-        if (assetError) {
-          console.error("media asset save error", assetError);
+        if (photoRows.length > 0) {
+          const { error: photoAssetError } = await supabaseClient
+            .from("media_assets")
+            .upsert(photoRows, { onConflict: "answer_id, asset_type, storage_path" });
+
+          if (photoAssetError) {
+            console.error("photo media asset save error", photoAssetError);
+          }
         }
       }
 
@@ -1283,6 +1509,8 @@ function App() {
       {scene === 4 && (
         <Scene4_AIMirror
           data={voiceData}
+          onAddPhotos={handlePhotoSelect}
+          onRemovePhoto={handleRemovePhoto}
           onNext={() => setScene(5)}
         />
       )}
@@ -1299,9 +1527,18 @@ function App() {
             resetVoiceData();
             setScene(2);
           }}
-          onBackToBookshelf={() => {
-            window.location.href = "mypage.html";
+          onOpenStoryPages={() => setScene("story_pages")}
+        />
+      )}
+
+      {scene === "story_pages" && (
+        <Scene_StoryPages
+          user={user}
+          onTalkMore={() => {
+            resetVoiceData();
+            setScene(2);
           }}
+          onBack={() => setScene(6)}
         />
       )}
     </div>
@@ -1994,10 +2231,10 @@ function Scene_Recording({ question, onComplete }) {
 
         const url = URL.createObjectURL(blob);
 
-        const finalTranscript = [
+        const finalTranscript = formatTranscriptForReading([
           transcriptRef.current,
           interimRef.current
-        ].filter(Boolean).join(" ").trim();
+        ].filter(Boolean).join(" "));
 
         onComplete(finalTranscript, time, url, blob);
 
@@ -2066,10 +2303,10 @@ function Scene_Recording({ question, onComplete }) {
       if (mediaRef.current && mediaRef.current.state !== "inactive") {
         mediaRef.current.stop();
       } else {
-        const finalTranscript = [
+        const finalTranscript = formatTranscriptForReading([
           transcriptRef.current,
           interimRef.current
-        ].filter(Boolean).join(" ").trim();
+        ].filter(Boolean).join(" "));
 
         onComplete(finalTranscript, time, null, null);
 
@@ -2246,7 +2483,9 @@ function Scene_Processing() {
   );
 }
 
-function Scene4_AIMirror({ data, onNext }) {
+function Scene4_AIMirror({ data, onAddPhotos, onRemovePhoto, onNext }) {
+  const photoInputRef = useRef(null);
+
   return (
     <div className="h-full flex flex-col fade-enter">
       <div className="flex-1 overflow-y-auto pb-10">
@@ -2259,6 +2498,88 @@ function Scene4_AIMirror({ data, onNext }) {
         <div className="text-white/80 text-[1.05rem] text-narrative whitespace-pre-wrap">
           {data.editedText}
         </div>
+
+        <div className="glass-card p-5 mt-10">
+          <p className="text-white/35 text-xs tracking-[0.18em] mb-4">
+            PHOTO
+          </p>
+
+          {data.photoItems && data.photoItems.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              {data.photoItems.map((photo, index) => (
+                <div
+                  key={photo.createdAt || index}
+                  className="relative rounded-2xl overflow-hidden bg-white/5 border border-white/10"
+                >
+                  <img
+                    src={photo.url}
+                    alt={`写真 ${index + 1}`}
+                    className="w-full aspect-square object-cover"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => onRemovePhoto(photo.createdAt)}
+                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white/80 text-sm"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              onAddPhotos(e.target.files);
+              e.target.value = "";
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            className="btn-quiet w-full py-4 rounded-full text-white/80"
+          >
+            写真を挿入する
+          </button>
+
+          <p className="mt-4 text-white/35 text-xs leading-loose text-center">
+            この語りに添えたい写真があれば、<br />
+            あとから本のページに使えます。
+          </p>
+        </div>
+
+        {data.audioSegments && data.audioSegments.length > 0 && (
+          <div className="glass-card p-5 mt-10">
+            <p className="text-white/35 text-xs tracking-[0.18em] mb-4">
+              ORIGINAL VOICE
+            </p>
+
+            <div className="space-y-4">
+              {data.audioSegments.map((segment, index) => (
+                <div key={segment.createdAt || index}>
+                  {data.audioSegments.length > 1 && (
+                    <p className="text-white/35 text-xs mb-2">
+                      音声 {index + 1}
+                    </p>
+                  )}
+
+                  <audio
+                    src={segment.url}
+                    controls
+                    className="w-full"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="pt-6 border-t border-white/10">
@@ -2311,7 +2632,7 @@ function Scene5_Meaning({ onNext }) {
   );
 }
 
-function Scene6_Completion({ onTalkMore, onBackToBookshelf }) {
+function Scene6_Completion({ onTalkMore, onOpenStoryPages }) {
   return (
     <div className="h-full flex flex-col items-center justify-center fade-enter text-center">
       <p className="text-white/90 text-[1.05rem] mb-12">
@@ -2327,15 +2648,217 @@ function Scene6_Completion({ onTalkMore, onBackToBookshelf }) {
         </button>
 
         <button
-          onClick={() => window.location.href = "settings.html"}
-          className="w-full py-3 text-white/35 text-sm underline underline-offset-4"
+          onClick={onOpenStoryPages}
+          className="w-full py-3 text-white/45 text-sm underline underline-offset-4"
         >
-          物語の設定
+          これまでの語りを見る
         </button>
       </div>
     </div>
   );
 }
+
+function Scene_StoryPages({ user, onTalkMore, onBack }) {
+  const [answers, setAnswers] = useState([]);
+  const [mediaByAnswerId, setMediaByAnswerId] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAnswers = async () => {
+      if (!user?.id) {
+        setAnswers([]);
+        setMediaByAnswerId({});
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        const { data, error } = await supabaseClient
+          .from("answers")
+          .select("id, sequence_order, transcript_raw, transcript_edited, ai_mirror, snippet, created_at")
+          .eq("user_id", user.id)
+          .order("sequence_order", { ascending: true });
+
+        if (error) throw error;
+
+        const answerRows = data || [];
+        setAnswers(answerRows);
+
+        const answerIds = answerRows.map(a => a.id);
+
+        if (answerIds.length > 0) {
+          const { data: mediaRows, error: mediaError } = await supabaseClient
+            .from("media_assets")
+            .select("answer_id, asset_type, storage_path, meta_json")
+            .in("answer_id", answerIds)
+            .order("created_at", { ascending: true });
+
+          if (mediaError) {
+            console.error("media load error", mediaError);
+          }
+
+          const grouped = {};
+
+          for (const media of mediaRows || []) {
+            if (!grouped[media.answer_id]) grouped[media.answer_id] = [];
+
+            let url = null;
+
+            if (media.asset_type === "photo") {
+              const { data: signed } = await supabaseClient.storage
+                .from("photos")
+                .createSignedUrl(media.storage_path, 60 * 60);
+
+              url = signed?.signedUrl || null;
+            }
+
+            if (media.asset_type === "audio") {
+              const { data: signed } = await supabaseClient.storage
+                .from("audio")
+                .createSignedUrl(media.storage_path, 60 * 60);
+
+              url = signed?.signedUrl || null;
+            }
+
+            grouped[media.answer_id].push({
+              ...media,
+              url
+            });
+          }
+
+          setMediaByAnswerId(grouped);
+        } else {
+          setMediaByAnswerId({});
+        }
+      } catch (e) {
+        console.error("story pages load error", e);
+        alert("これまでの語りの読み込みに失敗しました。");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAnswers();
+  }, [user?.id]);
+
+  return (
+    <div className="h-full flex flex-col fade-enter px-4 py-8 overflow-hidden">
+      <div className="text-center mb-8">
+        <p className="text-white/90 text-[1.05rem] text-narrative mb-3">
+          これまでの語り
+        </p>
+        <p className="ui-small">
+          あなたの声から生まれたページが<br />
+          ここに重なっていきます。
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto space-y-5 pb-6">
+        {loading ? (
+          <div className="h-full flex items-center justify-center">
+            <p className="text-white/35 text-sm tracking-widest animate-pulse">
+              読み込んでいます...
+            </p>
+          </div>
+        ) : answers.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-center">
+            <p className="text-white/45 text-sm leading-loose">
+              まだ語りはありません。<br />
+              最初の問いから始めてみましょう。
+            </p>
+          </div>
+        ) : (
+          answers.map((answer, index) => {
+            const body =
+              answer.transcript_edited ||
+              answer.transcript_raw ||
+              answer.snippet ||
+              "（本文を読み込めませんでした）";
+
+            const title =
+              answer.ai_mirror ||
+              answer.snippet ||
+              `ページ ${index + 1}`;
+
+            const media = mediaByAnswerId[answer.id] || [];
+            const photos = media.filter(m => m.asset_type === "photo" && m.url);
+            const audios = media.filter(m => m.asset_type === "audio" && m.url);
+
+            return (
+              <article
+                key={answer.id}
+                className="glass-card p-5 text-left"
+              >
+                <div className="border-l-2 border-amber-400/70 pl-4 mb-5">
+                  <p className="text-white/80 text-sm leading-loose">
+                    {title}
+                  </p>
+                </div>
+
+                {photos.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3 mb-5">
+                    {photos.map((photo, photoIndex) => (
+                      <img
+                        key={photo.storage_path || photoIndex}
+                        src={photo.url}
+                        alt={`写真 ${photoIndex + 1}`}
+                        className="w-full aspect-square object-cover rounded-2xl border border-white/10"
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-white/75 text-[0.98rem] leading-[2.15] whitespace-pre-wrap text-narrative">
+                  {body}
+                </p>
+
+                {audios.length > 0 && (
+                  <div className="mt-5 space-y-3">
+                    <p className="text-white/30 text-xs tracking-[0.18em]">
+                      ORIGINAL VOICE
+                    </p>
+
+                    {audios.map((audio, audioIndex) => (
+                      <audio
+                        key={audio.storage_path || audioIndex}
+                        src={audio.url}
+                        controls
+                        className="w-full"
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <p className="mt-5 text-white/30 text-xs tracking-widest">
+                  PAGE {String(index + 1).padStart(2, "0")}
+                </p>
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="pt-5 border-t border-white/10 space-y-4">
+        <button
+          onClick={onTalkMore}
+          className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white"
+        >
+          もう1ページ進める
+        </button>
+
+        <button
+          onClick={onBack}
+          className="w-full py-3 text-white/40 text-sm underline underline-offset-4"
+        >
+          戻る
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 function Scene_NotificationSetup({ user, onComplete }) {
   const presets = [
