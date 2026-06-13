@@ -133,6 +133,28 @@
   opacity: 0.75;
 }
 
+
+.voice-wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 52px;
+}
+
+.voice-wave-bar {
+  width: 4px;
+  min-height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  transition: height 120ms ease, opacity 120ms ease;
+  opacity: 0.45;
+}
+
+.is-recording .voice-wave-bar {
+  opacity: 0.72;
+}
+
 </style>
 </head>
 
@@ -171,6 +193,29 @@ function getSequenceFromUrl() {
   return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
 
+async function transcribeAudioOnServer({ answerId, audioPaths, fallbackTranscript }) {
+  const { data, error } = await supabaseClient.functions.invoke("transcribe-audio", {
+    body: {
+      answerId,
+      audioPaths,
+      fallbackTranscript
+    }
+  });
+
+  if (error) {
+    console.error("transcribe-audio invoke error", error);
+    throw error;
+  }
+
+  if (!data || data.success === false) {
+    console.error("transcribe-audio returned error", data);
+    throw new Error(data?.error || "文字起こしに失敗しました");
+  }
+
+  return data;
+}
+
+
 function isDevMode() {
   const params = new URLSearchParams(window.location.search);
   return params.get("dev") === "1";
@@ -178,35 +223,13 @@ function isDevMode() {
 
 
 function formatTranscriptForReading(input) {
-  let text = String(input || "")
-    .replace(/\s+/g, " ")
-    .trim();
-
+  let text = String(input || "").replace(/\s+/g, " ").trim();
   if (!text) return "";
 
-  const fillerPattern = /(えーと|えっと|あのー|あの|そのー|その|まあ|まぁ|なんか|えー|ええと|うーん|うんと)/g;
-  text = text.replace(fillerPattern, "$1、");
-
   const commaWords = [
-    "それは",
-    "それで",
-    "そして",
-    "でも",
-    "ただ",
-    "たしか",
-    "確か",
-    "たぶん",
-    "多分",
-    "だから",
-    "その時",
-    "そのとき",
-    "そこでは",
-    "あとは",
-    "ちなみに",
-    "思うけど",
-    "思いますけど",
-    "だったけど",
-    "でしたけど"
+    "それは", "それで", "そして", "でも", "ただ", "たしか", "確か",
+    "たぶん", "多分", "だから", "その時", "そのとき", "そこでは",
+    "近所の", "あとは", "ちなみに"
   ];
 
   commaWords.forEach(word => {
@@ -216,32 +239,14 @@ function formatTranscriptForReading(input) {
 
   text = text
     .replace(/、+/g, "、")
-    .replace(/、([。！？])/g, "$1")
-    .replace(/かなあ/g, "かなあ。")
-    .replace(/かなぁ/g, "かなぁ。")
-    .replace(/かな/g, "かな。")
-    .replace(/だった/g, "だった。")
-    .replace(/でした/g, "でした。")
-    .replace(/と思います/g, "と思います。")
-    .replace(/と思う/g, "と思う。")
-    .replace(/です/g, "です。")
-    .replace(/ます/g, "ます。")
-    .replace(/ました/g, "ました。");
-
-  text = text
-    .replace(/。+/g, "。")
-    .replace(/、。/g, "。")
-    .replace(/。([ぁ-んァ-ン一-龥A-Za-z0-9])/g, "。\n\n$1")
     .replace(/、\s*/g, "、")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+/g, " ")
     .trim();
 
-  if (!/[。！？]$/.test(text)) {
-    text += "。";
-  }
-
+  if (!/[。！？]$/.test(text)) text += "。";
   return text;
 }
+
 
 const DEV_LOGIN_EMAIL = "bird9bird9bird9+koedev@gmail.com";
 const DEV_LOGIN_PASSWORD = "bird9bird9";
@@ -1044,6 +1049,14 @@ function App() {
     });
   };
 
+  const handleEditedTextChange = (nextText) => {
+    setVoiceData(prev => ({
+      ...prev,
+      editedText: nextText
+    }));
+  };
+
+
   const handleVoiceProceed = async () => {
     setScene("processing");
 
@@ -1121,26 +1134,43 @@ function App() {
       let aiResult;
 
       try {
-        aiResult = await askAI(voiceData.transcript);
+        aiResult = await transcribeAudioOnServer({
+          answerId: targetAnswerId,
+          audioPaths: paths,
+          fallbackTranscript: voiceData.transcript
+        });
       } catch (e) {
-        console.error("AI error", e);
+        console.error("server transcription error", e);
 
         const raw = String(voiceData.transcript || "").trim();
 
         aiResult = {
+          transcript_raw: raw,
           transcript_edited: raw || "（音声が認識されませんでした）",
           ai_mirror_text: "ひとつの時間が、形になっています",
           extracted_snippet: raw
             ? `「${raw.slice(0, 45)}${raw.length > 45 ? "…" : ""}」`
-            : "「静かな時間が流れていました」"
+            : "「静かな時間が流れていました」",
+          used_fallback: true
         };
       }
 
+      const transcriptRaw =
+        aiResult.transcript_raw ||
+        aiResult.transcript ||
+        voiceData.transcript ||
+        "";
+
       setVoiceData(prev => ({
         ...prev,
-        editedText: aiResult.transcript_edited,
-        aiMirror: aiResult.ai_mirror_text,
-        extractedSnippet: aiResult.extracted_snippet
+        transcript: transcriptRaw,
+        editedText: aiResult.transcript_edited || transcriptRaw,
+        aiMirror: aiResult.ai_mirror_text || "ひとつの時間が、形になっています",
+        extractedSnippet:
+          aiResult.extracted_snippet ||
+          (transcriptRaw
+            ? `「${transcriptRaw.slice(0, 45)}${transcriptRaw.length > 45 ? "…" : ""}」`
+            : "「静かな時間が流れていました」")
       }));
 
       setScene(4);
@@ -1509,6 +1539,7 @@ function App() {
       {scene === 4 && (
         <Scene4_AIMirror
           data={voiceData}
+          onEditedTextChange={handleEditedTextChange}
           onAddPhotos={handlePhotoSelect}
           onRemovePhoto={handleRemovePhoto}
           onNext={() => setScene(5)}
@@ -2146,16 +2177,48 @@ function Scene2_PreVoice({ onNext, duration }) {
   );
 }
 
+function VoiceWave({ level = 0 }) {
+  const bars = [0.18, 0.34, 0.52, 0.78, 0.58, 0.42, 0.26, 0.48, 0.72, 0.54, 0.32, 0.22];
+
+  return (
+    <div className="voice-wave" aria-hidden="true">
+      {bars.map((base, index) => {
+        const motion =
+          0.35 +
+          Math.abs(Math.sin(Date.now() / 240 + index * 0.85)) * 0.25 +
+          level * 0.9;
+
+        const height = Math.max(8, Math.min(48, 8 + base * 26 + motion * 20));
+
+        return (
+          <div
+            key={index}
+            className="voice-wave-bar"
+            style={{
+              height: `${height}px`
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function Scene_Recording({ question, onComplete }) {
   const [step, setStep] = useState(0);
   const [time, setTime] = useState(0);
-  const [text, setText] = useState("");
+  const [voiceLevel, setVoiceLevel] = useState(0);
+  const [waveTick, setWaveTick] = useState(0);
 
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
   const speechRef = useRef(null);
   const mimeTypeRef = useRef("");
   const streamRef = useRef(null);
+
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const waveTimerRef = useRef(null);
 
   const transcriptRef = useRef("");
   const interimRef = useRef("");
@@ -2176,6 +2239,56 @@ function Scene_Recording({ question, onComplete }) {
     };
   }, [step]);
 
+  const startWaveMonitor = (stream) => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+
+      const ctx = new AudioContext();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      waveTimerRef.current = setInterval(() => {
+        analyser.getByteTimeDomainData(dataArray);
+
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const value = (dataArray[i] - 128) / 128;
+          sum += value * value;
+        }
+
+        const rms = Math.sqrt(sum / dataArray.length);
+        setVoiceLevel(Math.min(1, rms * 6));
+        setWaveTick(t => t + 1);
+      }, 120);
+    } catch (e) {
+      console.warn("wave monitor failed", e);
+    }
+  };
+
+  const stopWaveMonitor = () => {
+    if (waveTimerRef.current) {
+      clearInterval(waveTimerRef.current);
+      waveTimerRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch (e) {}
+      audioContextRef.current = null;
+    }
+
+    analyserRef.current = null;
+    setVoiceLevel(0);
+  };
+
   const getSupportedMimeType = () => {
     const types = [
       "audio/mp4",
@@ -2192,7 +2305,7 @@ function Scene_Recording({ question, onComplete }) {
   const start = async () => {
     setStep(1);
     setTime(0);
-    setText("");
+    setVoiceLevel(0);
 
     transcriptRef.current = "";
     interimRef.current = "";
@@ -2204,6 +2317,7 @@ function Scene_Recording({ question, onComplete }) {
       });
 
       streamRef.current = stream;
+      startWaveMonitor(stream);
 
       const mimeType = getSupportedMimeType();
       mimeTypeRef.current = mimeType;
@@ -2238,6 +2352,8 @@ function Scene_Recording({ question, onComplete }) {
 
         onComplete(finalTranscript, time, url, blob);
 
+        stopWaveMonitor();
+
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(t => t.stop());
           streamRef.current = null;
@@ -2246,6 +2362,8 @@ function Scene_Recording({ question, onComplete }) {
 
       mediaRef.current.start(250);
 
+      // This is only a fallback transcript for now.
+      // It is not shown during recording, to keep the user immersed in speaking.
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
       if (SpeechRec) {
@@ -2271,12 +2389,6 @@ function Scene_Recording({ question, onComplete }) {
           }
 
           interimRef.current = interimText;
-
-          setText(
-            [transcriptRef.current, interimRef.current]
-              .filter(Boolean)
-              .join(" ")
-          );
         };
 
         try {
@@ -2287,6 +2399,7 @@ function Scene_Recording({ question, onComplete }) {
       }
     } catch (e) {
       console.error(e);
+      stopWaveMonitor();
       alert("マイクが使えません: " + e.message);
       setStep(0);
     }
@@ -2309,6 +2422,8 @@ function Scene_Recording({ question, onComplete }) {
         ].filter(Boolean).join(" "));
 
         onComplete(finalTranscript, time, null, null);
+
+        stopWaveMonitor();
 
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(t => t.stop());
@@ -2353,15 +2468,22 @@ function Scene_Recording({ question, onComplete }) {
 
       {step === 1 && (
         <div className="space-y-7 pb-4">
-          <p className="text-white/45 text-sm tracking-widest">
-            {Math.floor(time / 60)}:{String(time % 60).padStart(2, "0")}
-          </p>
-
-          {text && (
-            <p className="text-white/30 text-sm leading-loose line-clamp-3 px-4">
-              {text}
+          <div className="glass-card py-5 px-4">
+            <p className="text-white/35 text-xs tracking-[0.18em] mb-3">
+              録音中
             </p>
-          )}
+
+            <VoiceWave level={voiceLevel + waveTick * 0} />
+
+            <p className="text-white/45 text-sm tracking-widest mt-3">
+              {Math.floor(time / 60)}:{String(time % 60).padStart(2, "0")}
+            </p>
+
+            <p className="text-white/35 text-xs leading-loose mt-4">
+              うまく話そうとしなくて大丈夫です。<br />
+              思い出したことから、そのまま話してください。
+            </p>
+          </div>
 
           <button
             onClick={stop}
@@ -2374,7 +2496,7 @@ function Scene_Recording({ question, onComplete }) {
 
       {step === 2 && (
         <p className="text-white/45 text-sm tracking-widest pb-10">
-          保存しています...
+          声を、言葉にしています...
         </p>
       )}
     </div>
@@ -2483,8 +2605,19 @@ function Scene_Processing() {
   );
 }
 
-function Scene4_AIMirror({ data, onAddPhotos, onRemovePhoto, onNext }) {
+function Scene4_AIMirror({ data, onEditedTextChange, onAddPhotos, onRemovePhoto, onNext }) {
   const photoInputRef = useRef(null);
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [draftText, setDraftText] = useState(data.editedText || "");
+
+  useEffect(() => {
+    setDraftText(data.editedText || "");
+  }, [data.editedText]);
+
+  const saveDraftText = () => {
+    onEditedTextChange(draftText);
+    setIsEditingText(false);
+  };
 
   return (
     <div className="h-full flex flex-col fade-enter">
@@ -2495,9 +2628,53 @@ function Scene4_AIMirror({ data, onAddPhotos, onRemovePhoto, onNext }) {
           </p>
         </div>
 
-        <div className="text-white/80 text-[1.05rem] text-narrative whitespace-pre-wrap">
-          {data.editedText}
-        </div>
+        {isEditingText ? (
+          <div className="glass-card p-5">
+            <p className="text-white/35 text-xs tracking-[0.18em] mb-4">
+              TRANSCRIPT
+            </p>
+
+            <textarea
+              value={draftText}
+              onChange={e => setDraftText(e.target.value)}
+              className="w-full min-h-[220px] bg-transparent text-white/85 text-[1.02rem] leading-[2.05] outline-none resize-none text-narrative"
+              autoFocus
+            />
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => {
+                  setDraftText(data.editedText || "");
+                  setIsEditingText(false);
+                }}
+                className="flex-1 py-3 rounded-full border border-white/10 text-white/45 text-sm"
+              >
+                キャンセル
+              </button>
+
+              <button
+                onClick={saveDraftText}
+                className="flex-1 btn-quiet bg-white/10 py-3 rounded-full text-white text-sm"
+              >
+                修正を反映する
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="text-white/80 text-[1.05rem] text-narrative whitespace-pre-wrap">
+              {data.editedText}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsEditingText(true)}
+              className="mt-6 text-white/45 text-sm underline underline-offset-4"
+            >
+              文字を修正する
+            </button>
+          </>
+        )}
 
         <div className="glass-card p-5 mt-10">
           <p className="text-white/35 text-xs tracking-[0.18em] mb-4">
@@ -2511,11 +2688,7 @@ function Scene4_AIMirror({ data, onAddPhotos, onRemovePhoto, onNext }) {
                   key={photo.createdAt || index}
                   className="relative rounded-2xl overflow-hidden bg-white/5 border border-white/10"
                 >
-                  <img
-                    src={photo.url}
-                    alt={`写真 ${index + 1}`}
-                    className="w-full aspect-square object-cover"
-                  />
+                  <img src={photo.url} alt={`写真 ${index + 1}`} className="w-full aspect-square object-cover" />
 
                   <button
                     type="button"
@@ -2570,11 +2743,7 @@ function Scene4_AIMirror({ data, onAddPhotos, onRemovePhoto, onNext }) {
                     </p>
                   )}
 
-                  <audio
-                    src={segment.url}
-                    controls
-                    className="w-full"
-                  />
+                  <audio src={segment.url} controls className="w-full" />
                 </div>
               ))}
             </div>
@@ -2583,10 +2752,7 @@ function Scene4_AIMirror({ data, onAddPhotos, onRemovePhoto, onNext }) {
       </div>
 
       <div className="pt-6 border-t border-white/10">
-        <button
-          onClick={onNext}
-          className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white"
-        >
+        <button onClick={onNext} className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white">
           次へ進む
         </button>
       </div>
@@ -2662,86 +2828,120 @@ function Scene_StoryPages({ user, onTalkMore, onBack }) {
   const [answers, setAnswers] = useState([]);
   const [mediaByAnswerId, setMediaByAnswerId] = useState({});
   const [loading, setLoading] = useState(true);
+  const [deletingPhotoPath, setDeletingPhotoPath] = useState(null);
+
+  const loadAnswers = async () => {
+    if (!user?.id) {
+      setAnswers([]);
+      setMediaByAnswerId({});
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabaseClient
+        .from("answers")
+        .select("id, sequence_order, transcript_raw, transcript_edited, ai_mirror, snippet, created_at")
+        .eq("user_id", user.id)
+        .order("sequence_order", { ascending: true });
+
+      if (error) throw error;
+
+      const answerRows = data || [];
+      setAnswers(answerRows);
+
+      const answerIds = answerRows.map(a => a.id);
+
+      if (answerIds.length > 0) {
+        const { data: mediaRows, error: mediaError } = await supabaseClient
+          .from("media_assets")
+          .select("id, answer_id, asset_type, storage_path, meta_json, created_at")
+          .in("answer_id", answerIds)
+          .order("created_at", { ascending: true });
+
+        if (mediaError) console.error("media load error", mediaError);
+
+        const grouped = {};
+
+        for (const media of mediaRows || []) {
+          if (!grouped[media.answer_id]) grouped[media.answer_id] = [];
+
+          let url = null;
+
+          if (media.asset_type === "photo") {
+            const { data: signed } = await supabaseClient.storage
+              .from("photos")
+              .createSignedUrl(media.storage_path, 60 * 60);
+            url = signed?.signedUrl || null;
+          }
+
+          if (media.asset_type === "audio") {
+            const { data: signed } = await supabaseClient.storage
+              .from("audio")
+              .createSignedUrl(media.storage_path, 60 * 60);
+            url = signed?.signedUrl || null;
+          }
+
+          grouped[media.answer_id].push({ ...media, url });
+        }
+
+        setMediaByAnswerId(grouped);
+      } else {
+        setMediaByAnswerId({});
+      }
+    } catch (e) {
+      console.error("story pages load error", e);
+      alert("これまでの語りの読み込みに失敗しました。");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadAnswers = async () => {
-      if (!user?.id) {
-        setAnswers([]);
-        setMediaByAnswerId({});
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-
-        const { data, error } = await supabaseClient
-          .from("answers")
-          .select("id, sequence_order, transcript_raw, transcript_edited, ai_mirror, snippet, created_at")
-          .eq("user_id", user.id)
-          .order("sequence_order", { ascending: true });
-
-        if (error) throw error;
-
-        const answerRows = data || [];
-        setAnswers(answerRows);
-
-        const answerIds = answerRows.map(a => a.id);
-
-        if (answerIds.length > 0) {
-          const { data: mediaRows, error: mediaError } = await supabaseClient
-            .from("media_assets")
-            .select("answer_id, asset_type, storage_path, meta_json")
-            .in("answer_id", answerIds)
-            .order("created_at", { ascending: true });
-
-          if (mediaError) {
-            console.error("media load error", mediaError);
-          }
-
-          const grouped = {};
-
-          for (const media of mediaRows || []) {
-            if (!grouped[media.answer_id]) grouped[media.answer_id] = [];
-
-            let url = null;
-
-            if (media.asset_type === "photo") {
-              const { data: signed } = await supabaseClient.storage
-                .from("photos")
-                .createSignedUrl(media.storage_path, 60 * 60);
-
-              url = signed?.signedUrl || null;
-            }
-
-            if (media.asset_type === "audio") {
-              const { data: signed } = await supabaseClient.storage
-                .from("audio")
-                .createSignedUrl(media.storage_path, 60 * 60);
-
-              url = signed?.signedUrl || null;
-            }
-
-            grouped[media.answer_id].push({
-              ...media,
-              url
-            });
-          }
-
-          setMediaByAnswerId(grouped);
-        } else {
-          setMediaByAnswerId({});
-        }
-      } catch (e) {
-        console.error("story pages load error", e);
-        alert("これまでの語りの読み込みに失敗しました。");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadAnswers();
   }, [user?.id]);
+
+  const deletePhoto = async (photo) => {
+    if (!photo?.storage_path) return;
+
+    const ok = window.confirm("この写真をページから削除しますか？");
+    if (!ok) return;
+
+    try {
+      setDeletingPhotoPath(photo.storage_path);
+
+      const { error: storageError } = await supabaseClient.storage
+        .from("photos")
+        .remove([photo.storage_path]);
+
+      if (storageError) {
+        console.error("photo storage delete error", storageError);
+        throw new Error("写真ファイルの削除に失敗しました");
+      }
+
+      if (photo.id) {
+        const { error: dbError } = await supabaseClient
+          .from("media_assets")
+          .delete()
+          .eq("id", photo.id)
+          .eq("user_id", user.id);
+
+        if (dbError) {
+          console.error("photo media row delete error", dbError);
+          throw new Error("写真情報の削除に失敗しました");
+        }
+      }
+
+      await loadAnswers();
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "写真の削除に失敗しました。");
+    } finally {
+      setDeletingPhotoPath(null);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col fade-enter px-4 py-8 overflow-hidden">
@@ -2758,9 +2958,7 @@ function Scene_StoryPages({ user, onTalkMore, onBack }) {
       <div className="flex-1 overflow-y-auto space-y-5 pb-6">
         {loading ? (
           <div className="h-full flex items-center justify-center">
-            <p className="text-white/35 text-sm tracking-widest animate-pulse">
-              読み込んでいます...
-            </p>
+            <p className="text-white/35 text-sm tracking-widest animate-pulse">読み込んでいます...</p>
           </div>
         ) : answers.length === 0 ? (
           <div className="h-full flex items-center justify-center text-center">
@@ -2771,62 +2969,46 @@ function Scene_StoryPages({ user, onTalkMore, onBack }) {
           </div>
         ) : (
           answers.map((answer, index) => {
-            const body =
-              answer.transcript_edited ||
-              answer.transcript_raw ||
-              answer.snippet ||
-              "（本文を読み込めませんでした）";
-
-            const title =
-              answer.ai_mirror ||
-              answer.snippet ||
-              `ページ ${index + 1}`;
-
+            const body = answer.transcript_edited || answer.transcript_raw || answer.snippet || "（本文を読み込めませんでした）";
+            const title = answer.ai_mirror || answer.snippet || `ページ ${index + 1}`;
             const media = mediaByAnswerId[answer.id] || [];
             const photos = media.filter(m => m.asset_type === "photo" && m.url);
             const audios = media.filter(m => m.asset_type === "audio" && m.url);
 
             return (
-              <article
-                key={answer.id}
-                className="glass-card p-5 text-left"
-              >
+              <article key={answer.id} className="glass-card p-5 text-left">
                 <div className="border-l-2 border-amber-400/70 pl-4 mb-5">
-                  <p className="text-white/80 text-sm leading-loose">
-                    {title}
-                  </p>
+                  <p className="text-white/80 text-sm leading-loose">{title}</p>
                 </div>
 
                 {photos.length > 0 && (
                   <div className="grid grid-cols-2 gap-3 mb-5">
                     {photos.map((photo, photoIndex) => (
-                      <img
+                      <div
                         key={photo.storage_path || photoIndex}
-                        src={photo.url}
-                        alt={`写真 ${photoIndex + 1}`}
-                        className="w-full aspect-square object-cover rounded-2xl border border-white/10"
-                      />
+                        className="relative rounded-2xl overflow-hidden border border-white/10 bg-white/5"
+                      >
+                        <img src={photo.url} alt={`写真 ${photoIndex + 1}`} className="w-full aspect-square object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => deletePhoto(photo)}
+                          disabled={deletingPhotoPath === photo.storage_path}
+                          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/55 text-white/85 text-sm"
+                        >
+                          {deletingPhotoPath === photo.storage_path ? "…" : "×"}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
 
-                <p className="text-white/75 text-[0.98rem] leading-[2.15] whitespace-pre-wrap text-narrative">
-                  {body}
-                </p>
+                <p className="text-white/75 text-[0.98rem] leading-[2.15] whitespace-pre-wrap text-narrative">{body}</p>
 
                 {audios.length > 0 && (
                   <div className="mt-5 space-y-3">
-                    <p className="text-white/30 text-xs tracking-[0.18em]">
-                      ORIGINAL VOICE
-                    </p>
-
+                    <p className="text-white/30 text-xs tracking-[0.18em]">ORIGINAL VOICE</p>
                     {audios.map((audio, audioIndex) => (
-                      <audio
-                        key={audio.storage_path || audioIndex}
-                        src={audio.url}
-                        controls
-                        className="w-full"
-                      />
+                      <audio key={audio.storage_path || audioIndex} src={audio.url} controls className="w-full" />
                     ))}
                   </div>
                 )}
@@ -2841,17 +3023,10 @@ function Scene_StoryPages({ user, onTalkMore, onBack }) {
       </div>
 
       <div className="pt-5 border-t border-white/10 space-y-4">
-        <button
-          onClick={onTalkMore}
-          className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white"
-        >
+        <button onClick={onTalkMore} className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white">
           もう1ページ進める
         </button>
-
-        <button
-          onClick={onBack}
-          className="w-full py-3 text-white/40 text-sm underline underline-offset-4"
-        >
+        <button onClick={onBack} className="w-full py-3 text-white/40 text-sm underline underline-offset-4">
           戻る
         </button>
       </div>
