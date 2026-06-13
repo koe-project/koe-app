@@ -1918,6 +1918,10 @@ function Scene_Recording({ question, onComplete }) {
   const chunksRef = useRef([]);
   const speechRef = useRef(null);
   const mimeTypeRef = useRef("");
+  const streamRef = useRef(null);
+
+  const transcriptRef = useRef("");
+  const interimRef = useRef("");
 
   useEffect(() => {
     let timer;
@@ -1952,12 +1956,17 @@ function Scene_Recording({ question, onComplete }) {
     setStep(1);
     setTime(0);
     setText("");
+
+    transcriptRef.current = "";
+    interimRef.current = "";
     chunksRef.current = [];
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true
       });
+
+      streamRef.current = stream;
 
       const mimeType = getSupportedMimeType();
       mimeTypeRef.current = mimeType;
@@ -1973,7 +1982,32 @@ function Scene_Recording({ question, onComplete }) {
         }
       };
 
-      mediaRef.current.start();
+      mediaRef.current.onstop = () => {
+        const finalMimeType =
+          mimeTypeRef.current ||
+          mediaRef.current?.mimeType ||
+          "audio/mp4";
+
+        const blob = new Blob(chunksRef.current, {
+          type: finalMimeType
+        });
+
+        const url = URL.createObjectURL(blob);
+
+        const finalTranscript = [
+          transcriptRef.current,
+          interimRef.current
+        ].filter(Boolean).join(" ").trim();
+
+        onComplete(finalTranscript, time, url, blob);
+
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+      };
+
+      mediaRef.current.start(250);
 
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -1985,16 +2019,27 @@ function Scene_Recording({ question, onComplete }) {
 
         speechRef.current.onresult = e => {
           let finalText = "";
+          let interimText = "";
 
           for (let i = e.resultIndex; i < e.results.length; i++) {
             if (e.results[i].isFinal) {
               finalText += e.results[i][0].transcript;
+            } else {
+              interimText += e.results[i][0].transcript;
             }
           }
 
           if (finalText) {
-            setText(prev => prev + finalText);
+            transcriptRef.current = `${transcriptRef.current} ${finalText}`.trim();
           }
+
+          interimRef.current = interimText;
+
+          setText(
+            [transcriptRef.current, interimRef.current]
+              .filter(Boolean)
+              .join(" ")
+          );
         };
 
         try {
@@ -2017,30 +2062,23 @@ function Scene_Recording({ question, onComplete }) {
       try { speechRef.current.stop(); } catch (e) {}
     }
 
-    if (mediaRef.current && mediaRef.current.state !== "inactive") {
-      mediaRef.current.onstop = () => {
-        const finalMimeType =
-          mimeTypeRef.current ||
-          mediaRef.current.mimeType ||
-          "audio/mp4";
+    setTimeout(() => {
+      if (mediaRef.current && mediaRef.current.state !== "inactive") {
+        mediaRef.current.stop();
+      } else {
+        const finalTranscript = [
+          transcriptRef.current,
+          interimRef.current
+        ].filter(Boolean).join(" ").trim();
 
-        const blob = new Blob(chunksRef.current, {
-          type: finalMimeType
-        });
+        onComplete(finalTranscript, time, null, null);
 
-        const url = URL.createObjectURL(blob);
-
-        onComplete(text, time, url, blob);
-
-        if (mediaRef.current.stream) {
-          mediaRef.current.stream.getTracks().forEach(t => t.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
         }
-      };
-
-      mediaRef.current.stop();
-    } else {
-      onComplete(text, time, null, null);
-    }
+      }
+    }, 1200);
   };
 
   return (
@@ -2059,7 +2097,7 @@ function Scene_Recording({ question, onComplete }) {
             )}
 
             {question.reassurance_text && (
-              <p className="text-white/35 text-sm leading-loose text-center whitespace-pre-wrap">
+              <p className="text-white/35 text-sm leading-loose text-center">
                 {question.reassurance_text}
               </p>
             )}
@@ -2067,40 +2105,45 @@ function Scene_Recording({ question, onComplete }) {
         )}
       </div>
 
-      <div className="pb-20">
-        {step === 0 && (
-          <button
-            onClick={start}
-            className="w-20 h-20 rounded-full bg-white/10 border border-white/30 text-white/70 mx-auto block"
-          >
-            開始
-          </button>
-        )}
+      {step === 0 && (
+        <button
+          onClick={start}
+          className="btn-quiet bg-white/10 w-full py-5 rounded-full text-white"
+        >
+          録音をはじめる
+        </button>
+      )}
 
-        {step === 1 && (
-          <div className="space-y-8">
-            <p className="font-mono text-3xl text-white/80 animate-pulse">
-              {Math.floor(time / 60).toString().padStart(2, "0")}:{(time % 60).toString().padStart(2, "0")}
-            </p>
-
-            <button
-              onClick={stop}
-              className="w-16 h-16 rounded-full bg-white text-slate-900 mx-auto block font-bold text-xs"
-            >
-              完了
-            </button>
-          </div>
-        )}
-
-        {step === 2 && (
-          <p className="text-white/50 text-sm animate-pulse">
-            音声を預かっています...
+      {step === 1 && (
+        <div className="space-y-7 pb-4">
+          <p className="text-white/45 text-sm tracking-widest">
+            {Math.floor(time / 60)}:{String(time % 60).padStart(2, "0")}
           </p>
-        )}
-      </div>
+
+          {text && (
+            <p className="text-white/30 text-sm leading-loose line-clamp-3 px-4">
+              {text}
+            </p>
+          )}
+
+          <button
+            onClick={stop}
+            className="w-24 h-24 rounded-full bg-white text-slate-900 shadow-xl"
+          >
+            終了
+          </button>
+        </div>
+      )}
+
+      {step === 2 && (
+        <p className="text-white/45 text-sm tracking-widest pb-10">
+          保存しています...
+        </p>
+      )}
     </div>
   );
 }
+
 
 function Scene3_5_VoiceCheck({ data, question, onAddMore, onRetry, onProceed }) {
   const transcriptLength = String(data.transcript || "").trim().length;
@@ -2111,6 +2154,9 @@ function Scene3_5_VoiceCheck({ data, question, onAddMore, onRetry, onProceed }) 
   const isShortAnswer =
     (data.duration > 0 && data.duration < minDuration) ||
     transcriptLength < minChars;
+
+  const hasAlreadyAddedMore = (data.addMoreCount || 0) > 0;
+  const shouldSuggestAddMore = isShortAnswer && !hasAlreadyAddedMore;
 
   const isFactTimeline = question?.prompt_style === "fact_timeline";
 
@@ -2142,7 +2188,7 @@ function Scene3_5_VoiceCheck({ data, question, onAddMore, onRetry, onProceed }) 
         )}
       </div>
 
-      {isShortAnswer && (
+      {shouldSuggestAddMore && (
         <div className="glass-card p-5 w-full max-w-[320px] mb-8 text-left">
           <p className="text-white/70 text-sm leading-loose mb-3">
             ありがとうございます。
@@ -2161,7 +2207,7 @@ function Scene3_5_VoiceCheck({ data, question, onAddMore, onRetry, onProceed }) 
       )}
 
       <div className="flex flex-col gap-4 w-full max-w-[280px]">
-        {isShortAnswer && (
+        {shouldSuggestAddMore && (
           <button
             onClick={onAddMore}
             className="btn-quiet bg-white/10 w-full py-4 rounded-full text-white"
