@@ -942,22 +942,25 @@ function App() {
     initApp();
   }, []);
 
-  const resetVoiceData = () => {
-    setVoiceData({
-      duration: 0,
-      transcript: "",
-      audioUrl: null,
-      hasAudio: false,
-      audioBlob: null,
-      editedText: "",
-      aiMirror: "",
-      extractedSnippet: "",
-      answerId: null,
-      storagePath: null,
-      appendMode: false,
-      addMoreCount: 0
-    });
-  };
+ const resetVoiceData = () => {
+  setVoiceData({
+    duration: 0,
+    transcript: "",
+    audioUrl: null,
+    hasAudio: false,
+    audioBlob: null,
+    audioSegments: [],
+    photoItems: [],
+    editedText: "",
+    aiMirror: "",
+    extractedSnippet: "",
+    answerId: null,
+    storagePath: null,
+    storagePaths: [],
+    appendMode: false,
+    addMoreCount: 0
+  });
+};
 
   const handleRecordComplete = (txt, dur, url, blob) => {
     console.log("recorded blob", {
