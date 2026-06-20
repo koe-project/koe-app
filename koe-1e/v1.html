@@ -232,10 +232,9 @@ function formatTranscriptForReading(input) {
     "近所の", "あとは", "ちなみに"
   ];
 
-  commaWords.forEach(word => {
-    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    text = text.replace(new RegExp(escaped, "g"), `${word}、`);
-  });
+commaWords.forEach(word => {
+  text = text.split(word).join(`${word}、`);
+});
 
   text = text
     .replace(/、+/g, "、")
